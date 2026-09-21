@@ -1,0 +1,68 @@
+# Skidc dispatcher config for XBOW benchmark runs.
+# Copy to ../dispatch.yaml (the dispatcher reads dispatch.yaml) and fill in real
+# model endpoints + API keys. Differences from the normal dispatch.example.yaml are
+# called out inline. See benchmark/README.md for the full runbook.
+
+server: "http://skidc-server:8000"      # if dispatcher runs in the compose stack
+# server: "http://127.0.0.1:8000"       # if dispatcher runs on the host
+
+common_env: {}
+
+runtime:
+  interval: 3
+  max_workers: 8
+  # IMPORTANT: keep benchmark_runner --max-concurrent <= this number, or created
+  # projects will queue instead of running.
+  max_running_projects: 3
+  max_project_workers: 4
+  healthcheck_timeout: 20
+  worker_healthcheck: "startup_only"
+  prompt_group: "default"
+  server_timeout: 15
+  dispatch_view_timeout: 15
+  project_detail_timeout: 60
+
+tasks:
+  bootstrap:
+    timeout: 300
+    conclude_timeout: 90
+  reason:
+    timeout: 300
+    max_intents: 2
+  explore:
+    timeout: 600
+    conclude_timeout: 120
+
+container:
+  image: "skidc-worker:latest"
+  # CRITICAL: workers join the shared network so they can reach each benchmark's web
+  # container by DNS alias (http://xben-001-24:80). The benchmark_runner attaches each
+  # target to this same network. This replaces the fragile "host networking + discover
+  # the random published port" approach and works the same on Linux and Docker Desktop.
+  network_mode: "skidc-bench"
+  # Benchmarks are disposable — remove finished containers to keep the host clean.
+  completed_action: "remove"
+
+workers:
+  # Split roles across two model tiers: a fast "doer" for bootstrap/explore and a
+  # stronger "brain" for reason. Both drive DeepSeek via the Claude Code CLI loop;
+  # the actual model is chosen entirely by env (the headline Skidc design seam).
+  - name: "deepseek_flash_doer"
+    type: "claudecode"
+    task_types: [bootstrap, explore]
+    max_running: 3
+    priority: 0
+    env:
+      ANTHROPIC_MODEL: "deepseek-v4-flash"
+      ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic"
+      ANTHROPIC_AUTH_TOKEN: "<YOUR_ANTHROPIC_AUTH_TOKEN>"
+
+  - name: "deepseek_pro_brain"
+    type: "claudecode"
+    task_types: [reason]
+    max_running: 2
+    priority: 0
+    env:
+      ANTHROPIC_MODEL: "deepseek-v4-pro"
+      ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic"
+      ANTHROPIC_AUTH_TOKEN: "<YOUR_ANTHROPIC_AUTH_TOKEN>"

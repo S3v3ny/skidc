@@ -1,0 +1,2293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Skidc · Blackboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
+<style>
+  :root {
+    --bg-main: #141822;
+    --bg-canvas: #0f121a;
+    --panel-bg: rgba(26, 32, 46, 0.85);
+    --panel-bg-hover: rgba(38, 47, 68, 0.9);
+    --panel2: rgba(20, 24, 34, 0.8);
+    --border-color: rgba(56, 68, 97, 0.6);
+    --border-focus: #4ea1ff;
+    --text-main: #f0f3f8;
+    --text-muted: #96a5be;
+    --status-active: #10b981;
+    --status-stopped: #94a3b8;
+    --status-completed: #3b82f6;
+    --status-failed: #ef4444;
+    --color-critical: #ff4d4f;
+    --color-high: #ffa940;
+    --color-medium: #2f54eb;
+    --color-low: #73d13d;
+    --color-info: #13c2c2;
+    --color-origin: #9254de;
+    --color-goal: #ffec3d;
+    --font-family: "Inter", "SF Pro Display", "-apple-system", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg-main);
+    color: var(--text-main);
+    font-family: var(--font-family);
+    font-size: 15px;
+    line-height: 1.55;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(94, 114, 153, 0.4); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(94, 114, 153, 0.7); }
+
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ---- header ---- */
+  header {
+    display: flex; align-items: center; gap: 18px; padding: 14px 24px;
+    background: rgba(20, 24, 34, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-color);
+    z-index: 20; flex-shrink: 0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  }
+  header h1 { font-size: 22px; font-weight: 800; letter-spacing: 0.5px; color: #fff; }
+  .header-tag { background: rgba(78, 161, 255, 0.15); color: #4ea1ff; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+  .spacer { flex: 1; }
+  button {
+    background: rgba(255, 255, 255, 0.05); color: var(--text-main);
+    border: 1px solid var(--border-color); border-radius: 6px;
+    padding: 7px 16px; cursor: pointer; font-size: 13px; font-weight: 500;
+    transition: all 0.25s ease; font-family: inherit;
+  }
+  button:hover { border-color: var(--border-focus); background: rgba(78, 161, 255, 0.1); color: #fff; }
+  button.primary { background: #2f54eb; border-color: #2f54eb; color: #fff; }
+  button.primary:hover { background: #1d39c4; }
+
+  /* ---- layout ---- */
+  .layout-wrapper { display: flex; flex: 1; overflow: hidden; }
+
+  /* ---- sidebar ---- */
+  .sidebar {
+    width: 310px; border-right: 1px solid var(--border-color);
+    background: var(--panel-bg); backdrop-filter: blur(10px);
+    display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0;
+  }
+  .proj-item {
+    padding: 18px 22px; border-bottom: 1px solid rgba(56, 68, 97, 0.3);
+    cursor: pointer; transition: all 0.2s ease; position: relative;
+  }
+  .proj-item:hover { background: var(--panel-bg-hover); }
+  .proj-item.active { background: rgba(38, 47, 68, 0.6); }
+  .proj-item.active::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 4px; background: var(--border-focus); border-radius: 0 4px 4px 0;
+  }
+  .proj-title { font-weight: 700; font-size: 16px; margin-bottom: 8px; color: #fff; }
+  .proj-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge {
+    padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: 500;
+    background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color);
+  }
+  .badge.status-active { color: #10b981; background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3); }
+  .badge.status-stopped { color: #94a3b8; background: rgba(148, 163, 184, 0.1); border-color: rgba(148, 163, 184, 0.3); }
+  .badge.status-completed { color: #3b82f6; background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3); }
+  .badge.status-failed { color: #ef4444; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); }
+  .badge.status-waiting_retry { color: #f3b34a; background: rgba(243, 179, 74, 0.1); border-color: rgba(243, 179, 74, 0.35); }
+  .badge.status-completion_blocked { color: #ff8f3d; background: rgba(255, 143, 61, 0.1); border-color: rgba(255, 143, 61, 0.4); }
+  .badge.status-stalled { color: #ef4444; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.35); }
+  .blocker-link { cursor: pointer; color: #ff8f3d; }
+  .blocker-link:hover { border-color: rgba(255, 143, 61, 0.75); background: rgba(255, 143, 61, 0.16); }
+  .badge.phase-recon { color: #ffa940; background: rgba(255, 169, 64, 0.1); border-color: rgba(255, 169, 64, 0.3); }
+  .badge.phase-explore { color: #4ea1ff; background: rgba(78, 161, 255, 0.1); border-color: rgba(78, 161, 255, 0.3); }
+  .badge.mode-ctf { color: #10b981; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); }
+  .badge.mode-real { color: #f59e0b; background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); }
+  .badge.surface-web { color: #4ea1ff; border-color: rgba(78, 161, 255, 0.45); }
+  .badge.surface-api { color: #22d3ee; border-color: rgba(34, 211, 238, 0.45); }
+  .badge.surface-support_service { color: #f3b34a; border-color: rgba(243, 179, 74, 0.45); }
+  .badge.surface-unclassified { color: #94a3b8; }
+  .badge.result-confirmed { color: #10b981; border-color: rgba(16, 185, 129, 0.45); }
+  .badge.result-limited { color: #f3b34a; border-color: rgba(243, 179, 74, 0.45); }
+  .badge.result-refuted { color: #94a3b8; border-color: rgba(148, 163, 184, 0.45); }
+  .badge.result-informational { color: #a78bfa; border-color: rgba(167, 139, 250, 0.45); }
+
+  /* ---- main content ---- */
+  .main-content { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; background: var(--bg-canvas); }
+
+  .tabs-header {
+    display: flex; background: rgba(15, 18, 26, 0.8); border-bottom: 1px solid var(--border-color);
+    padding: 0 16px; flex-shrink: 0;
+  }
+  .tab {
+    padding: 14px 22px; cursor: pointer; border-bottom: 2px solid transparent;
+    color: var(--text-muted); font-size: 14px; font-weight: 700; transition: all 0.2s;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .tab:hover { color: var(--text-main); }
+  .tab.active { color: var(--border-focus); border-bottom-color: var(--border-focus); }
+  .tab .count { color: var(--text-muted); font-size: 12px; margin-left: 4px; }
+
+  .tab-body { flex: 1; display: flex; flex-direction: column; position: relative; min-height: 0; }
+
+  /* ---- graph view ---- */
+  .graph-view {
+    flex: 1; position: relative; overflow: auto; min-height: 200px;
+    background-color: var(--bg-canvas);
+    background-image:
+      linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 30px 30px;
+  }
+  .graph-svg { display: block; }
+  .graph-summary {
+    flex-shrink: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(15, 18, 26, 0.72);
+    border-bottom: 1px solid var(--border-color);
+  }
+  .graph-summary-item {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--border-color);
+    border-left-width: 4px;
+    border-radius: 6px;
+    background: rgba(20, 24, 34, 0.78);
+    cursor: pointer;
+  }
+  .graph-summary-item:hover { border-color: var(--border-focus); }
+  .graph-summary-item.origin { border-left-color: var(--color-origin); }
+  .graph-summary-item.goal { border-left-color: var(--color-goal); }
+  .graph-summary-id {
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .graph-summary-item.origin .graph-summary-id { color: var(--color-origin); }
+  .graph-summary-item.goal .graph-summary-id { color: var(--color-goal); }
+  .graph-summary-desc {
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .graph-bottom-panel {
+    flex-shrink: 0;
+    overflow-y: auto;
+    border-top: 1px solid var(--border-color);
+    padding: 8px 12px;
+    position: relative;
+    background: rgba(15, 18, 26, 0.74);
+  }
+  .graph-bottom-resize {
+    height: 8px;
+    margin: -8px -12px 6px;
+    cursor: row-resize;
+    border-bottom: 1px solid rgba(56, 68, 97, 0.55);
+    background: linear-gradient(180deg, rgba(78, 161, 255, 0.16), transparent);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  .graph-bottom-resize::after {
+    content: "";
+    display: block;
+    width: 56px;
+    height: 3px;
+    border-radius: 999px;
+    margin: 2px auto 0;
+    background: rgba(150, 165, 190, 0.55);
+  }
+  .node-rect {
+    rx: 10; ry: 10; cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .node-rect.fact-rect { fill: var(--panel2); stroke: var(--border-color); stroke-width: 2; }
+  .node-rect.fact-rect:hover { filter: drop-shadow(0 0 10px var(--node-color, #4ea1ff)); stroke-width: 2.5; }
+  .node-rect.fact-rect.selected { stroke-width: 3; fill: #1f2636; filter: drop-shadow(0 0 14px var(--node-color, #4ea1ff)); }
+  .node-rect.intent-rect { fill: rgba(78, 161, 255, 0.06); stroke: rgba(78, 161, 255, 0.18); stroke-width: 1.5; }
+  .node-rect.intent-rect.done { fill: rgba(65, 211, 154, 0.06); stroke: rgba(65, 211, 154, 0.18); }
+  .node-rect.intent-rect:hover { fill: rgba(78, 161, 255, 0.12); stroke: rgba(78, 161, 255, 0.3); stroke-width: 2; }
+  .node-rect.intent-rect.done:hover { fill: rgba(65, 211, 154, 0.12); stroke: rgba(65, 211, 154, 0.3); stroke-width: 2; }
+
+  .node-rect.origin { stroke: var(--color-origin); }
+  .node-rect.goal { stroke: var(--color-goal); }
+
+  .fact-text-id { fill: var(--text-main); font-family: var(--font-family); font-size: 15px; font-weight: 800; }
+  .fact-text-id.origin { fill: var(--color-origin); }
+  .fact-text-id.goal { fill: var(--color-goal); }
+  .fact-text-desc { fill: var(--text-muted); font-family: var(--font-family); font-size: 13px; }
+  .fact-badge-bg { fill: none; rx: 4; ry: 4; stroke-width: 1; }
+  .fact-badge-text { font-family: var(--font-family); font-size: 11px; font-weight: 700; }
+  .intent-text-id { fill: var(--border-focus); font-family: var(--font-family); font-size: 13px; font-weight: 800; }
+  .intent-text-id.done { fill: var(--status-active); }
+  .intent-text-desc { fill: var(--text-muted); font-family: var(--font-family); font-size: 12px; }
+
+  .edge-path { fill: none; stroke: rgba(148, 163, 184, 0.4); stroke-width: 2; }
+  .edge-path.done { stroke: rgba(65, 211, 154, 0.6); stroke-width: 2.5; }
+  .edge-path.open { stroke: rgba(243, 179, 74, 0.5); stroke-dasharray: 5, 5; stroke-width: 2; }
+
+  /* ---- content scroll area ---- */
+  .content-scroll { flex: 1; overflow-y: auto; padding: 18px 22px; }
+
+  /* ---- origin/goal cards ---- */
+  .og-card {
+    border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 18px;
+    margin-bottom: 10px; background: var(--panel-bg); cursor: pointer; transition: 0.15s;
+  }
+  .og-card:hover { border-color: var(--border-focus); }
+  .og-card.origin { border-left: 4px solid var(--color-origin); }
+  .og-card.goal { border-left: 4px solid var(--color-goal); }
+  .og-card .og-id { font-weight: 800; font-size: 16px; }
+  .og-card.origin .og-id { color: var(--color-origin); }
+  .og-card.goal .og-id { color: var(--color-goal); }
+  .og-card .og-desc { margin-top: 4px; white-space: pre-wrap; font-size: 14px; color: var(--text-muted); }
+
+  /* ---- orphans ---- */
+  .orphans-section { margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 10px; }
+  .orphans-title { color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; }
+  .orphans-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .orphan-node {
+    min-width: 60px; max-width: 300px; font-size: 12px;
+    border: 1px solid var(--border-color); border-radius: 6px;
+    padding: 4px 10px; background: var(--panel-bg); cursor: pointer;
+  }
+  .orphan-node:hover { border-color: var(--border-focus); }
+  .orphan-node.selected { border-color: var(--border-focus); background: var(--panel-bg-hover); }
+
+  /* ---- sections ---- */
+  .sec { margin-bottom: 14px; margin-top: 18px; }
+  .sec h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin: 0 0 8px; font-weight: 700;
+  }
+
+  /* ---- attack path cards ---- */
+  .ap-card {
+    background: rgba(30, 38, 56, 0.6); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;
+    border: 1px solid rgba(56, 68, 97, 0.4);
+  }
+  .ap-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .ap-name { font-weight: 700; font-size: 14px; color: #fff; }
+  .ap-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+  .ap-status-reason { font-size: 11px; color: var(--text-muted); margin: -2px 0 8px; }
+  .ap-chain {
+    color: #4ea1ff; font-family: ui-monospace, monospace; font-size: 11px;
+    background: rgba(15, 18, 26, 0.6); padding: 8px 12px; border-radius: 6px;
+    border: 1px solid rgba(56, 68, 97, 0.2);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .ap-arrow { color: var(--text-muted); font-weight: bold; }
+  .ap-step-state { font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
+  .link-tag { color: #4ea1ff; cursor: pointer; text-decoration: none; border-bottom: 1px dashed rgba(78, 161, 255, 0.5); transition: 0.2s; padding: 1px 3px; font-weight: 600; }
+  .link-tag:hover { color: #79c0ff; border-bottom-style: solid; background: rgba(78, 161, 255, 0.1); }
+
+  /* ---- hint cards ---- */
+  .hint-card {
+    border-left: 3px solid var(--color-origin); padding: 10px 14px; margin-bottom: 4px;
+    background: var(--panel-bg); border-radius: 0 6px 6px 0; font-size: 13px;
+  }
+  .hint-card .hi-head { display: flex; gap: 8px; align-items: center; }
+  .hint-card .hi-id { font-weight: 700; color: var(--color-origin); }
+  .hint-card .hi-by { color: var(--text-muted); font-size: 12px; }
+  .hint-card .hi-content { margin-top: 2px; }
+  .graph-bottom-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 320px); gap: 12px; align-items: start; }
+  .graph-bottom-layout .sec { margin-top: 0; margin-bottom: 8px; }
+  .graph-aux-panel { border-left: 1px solid var(--border-color); padding-left: 12px; min-height: 100%; }
+  .aux-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .aux-chip {
+    max-width: 100%;
+    border: 1px solid rgba(56, 68, 97, 0.75);
+    border-radius: 6px;
+    padding: 4px 8px;
+    background: rgba(30, 38, 56, 0.45);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .aux-chip:hover { border-color: var(--border-focus); color: var(--text-main); }
+  .aux-chip .aux-id { font-weight: 800; margin-right: 4px; }
+  .aux-chip .aux-kind { color: var(--text-dim); }
+
+  /* ---- sub-goals (potential targets) ---- */
+  .subgoal-card {
+    border-left: 3px solid #ffa940; padding: 10px 14px; margin-bottom: 4px;
+    background: var(--panel-bg); border-radius: 0 6px 6px 0; font-size: 13px;
+    cursor: pointer; transition: 0.1s;
+  }
+  .subgoal-card:hover { background: var(--panel-bg-hover); }
+  .subgoal-card.completed { border-left-color: #10b981; opacity: 0.7; }
+  .subgoal-card .sg-head { display: flex; gap: 8px; align-items: center; }
+  .subgoal-card .sg-id { font-weight: 700; color: #ffa940; }
+  .subgoal-card.completed .sg-id { color: #10b981; }
+  .subgoal-card .sg-status { font-size: 11px; padding: 1px 8px; border-radius: 4px; font-weight: 600; }
+  .subgoal-card .sg-status.pending { color: #ffa940; border: 1px solid rgba(255, 169, 64, 0.4); }
+  .subgoal-card .sg-status.completed { color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); }
+  .subgoal-card .sg-desc { margin-top: 4px; color: var(--text-muted); }
+
+  /* ---- fact cards (Facts tab) ---- */
+  .filter-bar { display: flex; gap: 6px; align-items: center; padding: 10px 0; flex-wrap: wrap; }
+  .filter-bar input {
+    width: 180px; font-size: 13px; padding: 5px 8px; font-family: inherit;
+    background: var(--bg-canvas); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px;
+  }
+  .filter-bar input:focus { outline: none; border-color: var(--border-focus); }
+  .flt-label { font-size: 12px; color: var(--text-muted); }
+  .filter-btn { font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+  .filter-btn.active { background: #2f54eb; color: #fff; border-color: #2f54eb; }
+  .filter-results { font-size: 12px; color: var(--text-muted); padding: 4px 0; }
+
+  .fact-group { margin-bottom: 16px; }
+  .group-toggle {
+    display: flex; align-items: center; gap: 6px; padding: 10px 14px;
+    background: var(--panel2); border-radius: 6px; cursor: pointer; font-size: 13px;
+    border: 1px solid var(--border-color); user-select: none;
+  }
+  .group-toggle:hover { border-color: var(--border-focus); }
+  .group-toggle .chevron { font-size: 12px; transition: transform .15s; color: var(--text-muted); }
+  .group-toggle .chevron.open { transform: rotate(90deg); }
+  .group-toggle .gt-name { font-weight: 700; flex: 1; }
+  .group-toggle .gt-count { font-size: 12px; color: var(--text-muted); }
+
+  .group-body { margin-left: 8px; margin-top: 4px; }
+  .fact-card {
+    padding: 10px 14px 10px 16px; margin-bottom: 4px;
+    border-left: 3px solid var(--border-color);
+    background: var(--panel-bg); border-radius: 0 6px 6px 0; cursor: pointer;
+    font-size: 14px; transition: 0.1s;
+  }
+  .fact-card:hover { background: var(--panel-bg-hover); transform: translateX(2px); }
+  .fact-card.selected { background: var(--panel-bg-hover); box-shadow: inset 0 0 0 1px var(--border-focus); }
+  .fact-card .fc-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .fact-card .fc-id { font-weight: 800; }
+  .fact-card .fc-desc { color: var(--text-muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fact-card .fc-meta { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+
+  /* ---- intent cards ---- */
+  .intent-card {
+    border-left: 3px solid #f3b34a; padding: 10px 14px; margin-bottom: 4px;
+    background: var(--panel-bg); border-radius: 0 6px 6px 0; font-size: 14px;
+    cursor: pointer;
+  }
+  .intent-card.done { border-left-color: #41d39a; }
+  .intent-card:hover { background: var(--panel-bg-hover); }
+  .intent-card.selected { background: var(--panel-bg-hover); box-shadow: inset 0 0 0 1px var(--border-focus); }
+  .intent-card .ic-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .intent-card .ic-id { font-weight: 800; color: var(--border-focus); }
+  .intent-card .ic-arrow { color: var(--text-muted); }
+  .intent-card .ic-desc { margin-top: 3px; }
+  .intent-card .ic-meta { font-size: 12px; color: var(--text-muted); margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .intent-card .ic-status { font-size: 11px; padding: 1px 8px; border-radius: 4px; font-weight: 600; }
+  .intent-card .ic-status.open { color: #f3b34a; border: 1px solid rgba(243, 179, 74, 0.4); }
+  .intent-card .ic-status.concluded { color: #41d39a; border: 1px solid rgba(65, 211, 154, 0.4); }
+
+  /* ---- timeline ---- */
+  .tl { position: relative; padding: 4px 0; }
+  .tl-item { display: flex; gap: 12px; padding: 4px 0; cursor: pointer; }
+  .tl-item:hover .tl-card { background: var(--panel-bg-hover); }
+  .tl-gutter { width: 28px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
+  .tl-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; z-index: 1; }
+  .tl-line { width: 2px; flex: 1; min-height: 4px; background: var(--border-color); }
+  .tl-card {
+    flex: 1; background: var(--panel-bg); border-radius: 6px; padding: 8px 14px;
+    transition: background .1s; margin-bottom: 2px;
+  }
+  .tl-card.selected { background: var(--panel-bg-hover); box-shadow: inset 0 0 0 1px var(--border-focus); }
+  .tl-card .tl-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .tl-card .tl-id { font-weight: 800; }
+  .tl-card .tl-desc { color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+  .tl-card .tl-time { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+
+  /* ---- logs tab ---- */
+  .log-filters { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .log-filters select {
+    background: var(--panel-bg); color: var(--text); border: 1px solid var(--border-color);
+    border-radius: 4px; padding: 4px 8px; font-size: 13px;
+  }
+
+  /* ---- completion blockers ---- */
+  .blocker-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .blocker-summary-time { color: var(--text-muted); font-size: 12px; }
+  .blocker-summary-actions { display: flex; gap: 8px; margin-left: auto; }
+  .blocker-action {
+    border: 1px solid var(--border-color); border-radius: 5px; padding: 5px 10px;
+    background: var(--panel-bg-hover); color: var(--text-main); cursor: pointer; font-size: 12px;
+  }
+  .blocker-action:hover { border-color: var(--border-focus); }
+  .blocker-action.danger { color: #ff7b72; border-color: rgba(248,81,73,.45); }
+  .blocker-action.exclude { margin-left: auto; color: #f3b34a; }
+  .blocker-variants {
+    display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; color: var(--text-muted); font-size: 12px;
+  }
+  .blocker-variant { border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 6px; }
+  .blocker-group { margin-bottom: 22px; }
+  .blocker-group-title {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    color: var(--text-main); font-size: 14px; font-weight: 600;
+  }
+  .blocker-card {
+    padding: 12px 14px; margin-bottom: 6px; background: var(--panel-bg);
+    border-left: 3px solid #ff8f3d; border-radius: 0 6px 6px 0;
+  }
+  .blocker-card.kind-reason { border-left-color: #ef4444; }
+  .blocker-card.kind-fact { border-left-color: var(--color-critical); }
+  .blocker-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .blocker-ref { color: var(--border-focus); font-family: var(--font-mono); font-weight: 700; }
+  .blocker-priority { color: var(--text-muted); font-size: 12px; }
+  .blocker-desc { margin-top: 6px; color: var(--text-main); }
+  .blocker-reason { margin-top: 5px; color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
+  .blocker-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; color: var(--text-muted); font-size: 12px; }
+  .blocker-ref-link { color: var(--border-focus); cursor: pointer; }
+  .blocker-ref-link:hover { text-decoration: underline; }
+  .log-list { display: flex; flex-direction: column; gap: 8px; }
+  .log-item {
+    background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px;
+    padding: 10px 14px; cursor: pointer; transition: background .1s, border-color .15s;
+  }
+  .log-item:hover { background: var(--panel-bg-hover); border-color: var(--border-focus); }
+  .log-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .log-id { font-weight: 800; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; }
+  .log-badge {
+    font-size: 11px; padding: 1px 7px; border-radius: 4px; font-weight: 600; color: #fff;
+  }
+  .log-badge.type-bootstrap { background: #8b5cf6; }
+  .log-badge.type-explore { background: #3b82f6; }
+  .log-badge.type-reason { background: #f59e0b; }
+  .log-badge.type-hypothesis { background: #64748b; }
+  .log-badge.type-confirmed { background: #16865f; }
+  .log-badge.type-inconclusive { background: #b26a00; }
+  .log-badge.type-refuted { background: #b93838; }
+  .log-intent-ref { color: #58a6ff; cursor: pointer; text-decoration: underline; font-size: 12px; }
+  .log-worker { color: var(--text-muted); font-size: 12px; }
+  .log-phase { color: var(--text-muted); font-size: 12px; }
+  .log-meta { display: flex; gap: 10px; font-size: 12px; margin-top: 4px; }
+  .log-status-ok { color: #41d39a; font-weight: 600; }
+  .log-status-fail { color: #f85149; font-weight: 600; }
+  .log-status-timeout { color: #f3b34a; font-weight: 600; }
+  .log-duration { color: var(--text-muted); }
+  .log-time { color: var(--text-muted); }
+  .log-preview {
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: var(--text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px;
+    max-width: 100%;
+  }
+  .log-empty { color: var(--text-muted); text-align: center; padding: 40px 0; }
+
+  /* log detail modal */
+  .log-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex;
+    align-items: center; justify-content: center; z-index: 1000;
+  }
+  .log-modal {
+    background: var(--bg); border: 1px solid var(--border-color); border-radius: 10px;
+    width: 92%; max-width: 920px; max-height: 88vh; display: flex; flex-direction: column;
+    overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .log-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 20px; border-bottom: 1px solid var(--border-color);
+  }
+  .log-modal-header h3 { margin: 0; font-size: 16px; }
+  .log-modal-meta {
+    padding: 12px 20px; border-bottom: 1px solid var(--border-color);
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 6px;
+    font-size: 13px;
+  }
+  .log-modal-meta strong { color: var(--text-muted); margin-right: 4px; }
+  .log-modal-body { flex: 1; overflow-y: auto; padding: 0; }
+  .log-modal-section { padding: 12px 20px; }
+  .log-modal-section h4 { margin: 0 0 6px 0; font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .log-output {
+    background: #0d1117; color: #c9d1d9; border: 1px solid var(--border-color); border-radius: 6px;
+    padding: 12px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px;
+    overflow: auto; white-space: pre-wrap; word-break: break-all; max-height: 280px;
+    line-height: 1.5;
+  }
+  .log-modal-actions {
+    padding: 12px 20px; border-top: 1px solid var(--border-color);
+    display: flex; gap: 8px; justify-content: flex-end;
+  }
+  .log-modal-actions button {
+    padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 5px;
+    background: var(--panel-bg); color: var(--text); cursor: pointer; font-size: 13px;
+  }
+  .log-modal-actions button:hover { background: var(--panel-bg-hover); }
+
+  /* ---- detail panel ---- */
+  .detail-panel {
+    position: relative; background: var(--panel-bg); backdrop-filter: blur(10px);
+    border-left: 1px solid var(--border-color); display: flex; flex-direction: column;
+    overflow: visible; z-index: 10; flex-shrink: 0;
+    box-shadow: -6px 0 25px rgba(0, 0, 0, 0.3);
+    transition: width 0.05s ease;
+  }
+  .resize-handle {
+    position: absolute; left: -4px; top: 0; bottom: 0; width: 8px;
+    cursor: col-resize; z-index: 15; background: transparent; transition: background 0.2s;
+  }
+  .resize-handle:hover, .resize-handle.resizing { background: rgba(78, 161, 255, 0.4); }
+  .detail-inner { padding: 26px; overflow-y: auto; flex: 1; }
+  .detail-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; border-bottom: 1px solid rgba(56, 68, 97, 0.4); padding-bottom: 18px; }
+  .detail-header h2 { font-size: 20px; font-weight: 800; word-break: break-all; }
+  .close-btn { background: transparent; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; line-height: 1; }
+  .close-btn:hover { color: #fff; }
+  .info-group { margin-bottom: 24px; }
+  .info-group h4 { font-size: 12px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; letter-spacing: 1px; border-bottom: 1px solid rgba(56, 68, 97, 0.4); padding-bottom: 6px; font-weight: 700; }
+  .info-row { display: flex; margin-bottom: 8px; font-size: 14px; align-items: center; }
+  .info-label { width: 90px; color: var(--text-muted); flex-shrink: 0; }
+  .info-value { flex: 1; word-break: break-word; color: #fff; }
+  .severity-tag {
+    padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; text-transform: uppercase;
+    display: inline-block; background: rgba(255,255,255,0.05);
+  }
+  .desc-box {
+    background: rgba(15, 18, 26, 0.7); padding: 16px; border-radius: 8px;
+    border: 1px solid rgba(56, 68, 97, 0.4); white-space: pre-wrap; word-break: break-all;
+    font-family: var(--font-mono); font-size: 13px; max-height: 280px; overflow-y: auto; color: #e2e8f0;
+  }
+  .detail-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .detail-actions button { flex: 1; font-size: 13px; }
+
+  /* ---- new project form ---- */
+  .new-form {
+    background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px;
+    padding: 22px; margin: 60px auto; max-width: 580px;
+  }
+  .new-form label { font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 5px; margin-top: 14px; font-weight: 600; }
+  .new-form label:first-child { margin-top: 0; }
+  .new-form input, .new-form textarea, .new-form select {
+    width: 100%; background: var(--bg-canvas); color: var(--text-main); border: 1px solid var(--border-color);
+    border-radius: 6px; padding: 10px; font: inherit; font-size: 14px;
+  }
+  .new-form input:focus, .new-form textarea:focus, .new-form select:focus { outline: none; border-color: var(--border-focus); }
+  .new-form textarea { resize: vertical; min-height: 56px; }
+  .new-form .form-actions { display: flex; gap: 8px; margin-top: 18px; }
+  .new-form .form-actions button { flex: 1; }
+
+  .mode-selector { display: flex; gap: 8px; }
+  .mode-option {
+    flex: 1; display: flex; flex-direction: column; gap: 2px;
+    padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px;
+    cursor: pointer; transition: all .15s; background: var(--panel-bg);
+  }
+  .mode-option:hover { border-color: var(--border-focus); }
+  .mode-option.active { border-color: var(--accent); background: rgba(88, 166, 255, 0.08); }
+  .mode-option input[type="radio"] { display: none; }
+  .mode-label { font-size: 13px; font-weight: 600; color: var(--text); }
+  .mode-desc { font-size: 11px; color: var(--text-muted); }
+  .form-section {
+    margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(56, 68, 97, 0.45);
+  }
+  .form-section-title {
+    color: var(--text-muted); font-size: 12px; font-weight: 800; letter-spacing: 0;
+    margin-bottom: 8px;
+  }
+  .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+  .check-row {
+    display: flex; align-items: center; gap: 8px; margin-top: 10px;
+    color: var(--text-muted); font-size: 13px; font-weight: 600;
+  }
+  .check-row input { width: auto; }
+  .recon-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; margin-top: 6px; }
+  @media (max-width: 720px) {
+    .new-form { margin: 18px auto; max-width: 100%; }
+    .form-grid, .recon-toggles { grid-template-columns: 1fr; }
+    .graph-bottom-layout { grid-template-columns: 1fr; }
+    .graph-aux-panel { border-left: 0; border-top: 1px solid var(--border-color); padding-left: 0; padding-top: 8px; }
+  }
+
+  .bottom-bar {
+    padding: 10px 18px; border-top: 1px solid var(--border-color);
+    background: rgba(20, 24, 34, 0.9); backdrop-filter: blur(10px);
+    display: flex; gap: 8px; flex-shrink: 0;
+  }
+
+  .empty-state { text-align: center; padding: 80px 20px; color: var(--text-muted); font-size: 15px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>SKIDC <span class="header-tag">Blackboard State-Space Search</span></h1>
+    <div class="spacer"></div>
+    <button @click="showNew = true; selectedProjId = null; selectedItemId = null">+ 新建项目</button>
+    <button @click="loadProjects">⟳</button>
+    <span style="font-family:var(--font-mono);color:var(--text-muted);font-size:13px;font-weight:600">{{ clock }}</span>
+  </header>
+
+  <div class="layout-wrapper">
+    <!-- ---- sidebar ---- -->
+    <aside class="sidebar">
+      <div v-if="!projects.length" class="empty-state">暂无项目</div>
+      <div v-for="p in projects" :key="p.id"
+           class="proj-item" :class="{active: selectedProjId === p.id}"
+           @click="selectProject(p.id)">
+        <div class="proj-title">{{ p.title }}</div>
+        <div class="proj-meta">
+          <span class="badge" :class="'status-' + statusClass(p.run_state || p.status)">{{ statusLabel(p.run_state || p.status) }}</span>
+          <span class="badge" :class="p.bootstrap_enabled ? 'mode-ctf' : 'mode-real'">{{ p.bootstrap_enabled ? 'CTF' : '真实' }}</span>
+          <span v-if="p.phase" class="badge" :class="'phase-' + p.phase">{{ p.phase === 'recon' ? '侦察' : '探索' }}</span>
+          <span class="badge">{{ p.fact_count }} 事实</span>
+          <span class="badge">{{ p.intent_count }} 意图</span>
+          <span v-if="p.reason" class="badge">推理中</span>
+          <button v-if="p.completion_blockers?.length"
+                  class="badge blocker-link"
+                  @click.stop="openBlockers(p.id)">
+            阻塞 {{ p.completion_blockers.length }}
+          </button>
+          </div>
+        </div>
+    </aside>
+
+    <!-- ---- main content ---- -->
+    <main class="main-content">
+      <!-- empty / new form state -->
+      <div v-if="!selectedProjId" class="content-scroll">
+        <div v-if="showNew" class="new-form" @click.stop>
+          <label>项目名称</label>
+          <input v-model="newTitle" placeholder="侦察目标 X"/>
+          <label>初始状态（已知起点）</label>
+          <textarea v-model="newOrigin" rows="2" placeholder="目标 IP、系统、已知状态"></textarea>
+          <label>目标（成功条件）</label>
+          <textarea v-model="newGoal" rows="2" placeholder="获取 Shell、捕获 Flag、证明 X"></textarea>
+          <label>模式</label>
+          <div class="mode-selector">
+            <label class="mode-option" :class="{active: newMode === 'ctf'}">
+              <input type="radio" v-model="newMode" value="ctf"/>
+              <span class="mode-label">CTF 模式</span>
+              <span class="mode-desc">智能体自由探索，直接解决目标</span>
+            </label>
+            <label class="mode-option" :class="{active: newMode === 'real'}">
+              <input type="radio" v-model="newMode" value="real"/>
+              <span class="mode-label">真实网站模式</span>
+              <span class="mode-desc">先侦察后探索，需通过 RECON 门控</span>
+            </label>
+          </div>
+          <div v-if="newMode === 'real'" class="form-section">
+            <div class="form-section-title">安全边界</div>
+            <div class="form-grid">
+              <div>
+                <label>允许目标</label>
+                <input v-model="newAllowedTargets" placeholder="127.0.0.1, example.com"/>
+              </div>
+              <div>
+                <label>禁止目标</label>
+                <input v-model="newBlockedTargets" placeholder="admin.other.test"/>
+              </div>
+              <div>
+                <label>允许端口</label>
+                <input v-model="newAllowedPorts" placeholder="8080, 8443"/>
+              </div>
+              <div>
+                <label>禁止端口</label>
+                <input v-model="newBlockedPorts" placeholder="3306, 6379, 9222"/>
+              </div>
+              <div>
+                <label>允许路径</label>
+                <input v-model="newAllowedPaths" placeholder="/xhcms/"/>
+              </div>
+              <div>
+                <label>禁止路径</label>
+                <input v-model="newBlockedPaths" placeholder="/private/, /backup/"/>
+              </div>
+              <div>
+                <label>支撑服务端口</label>
+                <input v-model="newSupportPorts" placeholder="3306"/>
+              </div>
+            </div>
+            <label class="check-row">
+              <input type="checkbox" v-model="newAllowSubdomains"/>
+              <span>允许子域名匹配</span>
+            </label>
+            <label class="check-row">
+              <input type="checkbox" v-model="newAllowDomainScan"/>
+              <span>允许域名 / 子域名发现</span>
+            </label>
+            <label class="check-row">
+              <input type="checkbox" v-model="newPassiveOnly"/>
+              <span>仅被动探测</span>
+            </label>
+
+            <div class="form-section-title" style="margin-top:16px">侦察配置</div>
+            <label>目标类型</label>
+            <select v-model="newTargetType">
+              <option value="domain">域名 / Web</option>
+              <option value="ip">单 IP / 指定主机</option>
+              <option value="api">API</option>
+              <option value="android">Android</option>
+              <option value="mixed">混合目标</option>
+            </select>
+            <div v-if="newTargetType !== 'android'" class="recon-toggles">
+              <label class="check-row">
+                <input type="checkbox" v-model="newReconPortScan" :disabled="newPassiveOnly"/>
+                <span>端口服务探测</span>
+              </label>
+              <label class="check-row">
+                <input type="checkbox" v-model="newReconSubdomain" :disabled="newPassiveOnly || !newAllowDomainScan || !newAllowSubdomains || !['domain', 'mixed'].includes(newTargetType)"/>
+                <span>子域名发现</span>
+              </label>
+              <label class="check-row">
+                <input type="checkbox" v-model="newReconDirectory" :disabled="newPassiveOnly"/>
+                <span>目录 / API 路径</span>
+              </label>
+              <label class="check-row">
+                <input type="checkbox" v-model="newReconAsset" :disabled="newPassiveOnly"/>
+                <span>页面 / JS 资产</span>
+              </label>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="primary" @click="createProject">创建</button>
+            <button @click="showNew = false">取消</button>
+          </div>
+        </div>
+        <div v-else class="empty-state">请选择左侧项目，或创建新项目</div>
+      </div>
+
+      <!-- project loaded -->
+      <template v-if="selectedProjId && proj">
+        <nav class="tabs-header">
+          <div class="tab active" style="pointer-events:none;display:flex;align-items:center;gap:8px">
+            <span class="badge" :class="'status-' + statusClass(proj.project?.run_state || proj.project?.status)" style="font-size:11px;padding:2px 8px">
+              {{ statusLabel(proj.project?.run_state || proj.project?.status) }}
+            </span>
+            <span class="badge" :class="proj.project?.bootstrap_enabled ? 'mode-ctf' : 'mode-real'" style="font-size:11px;padding:2px 8px">
+              {{ proj.project?.bootstrap_enabled ? 'CTF模式' : '真实网站模式' }}
+            </span>
+            <span v-if="proj.project?.phase" class="badge" :class="'phase-' + proj.project.phase" style="font-size:11px;padding:2px 8px">
+              {{ proj.project.phase === 'recon' ? '侦察阶段' : '探索阶段' }}
+            </span>
+          </div>
+          <div v-for="t in tabs" :key="t.id"
+               class="tab" :class="{active: currentTab === t.id}"
+               @click="switchTab(t.id)">
+            {{ t.label }} <span v-if="t.count != null" class="count">({{ t.count }})</span>
+          </div>
+        </nav>
+
+        <div class="tab-body">
+          <!-- === GRAPH TAB === -->
+          <div v-show="currentTab === 'graph'" style="display:flex;flex-direction:column;height:100%">
+            <!-- compact origin / goal summary -->
+            <div v-if="originFact || goalFact" class="graph-summary">
+              <div v-if="originFact" class="graph-summary-item origin" @click="openFact('origin')" :title="originFact.description">
+                <span class="graph-summary-id">origin</span>
+                <span class="graph-summary-desc">{{ originFact.description }}</span>
+              </div>
+              <div v-if="goalFact" class="graph-summary-item goal" @click="openFact('goal')" :title="goalFact.description">
+                <span class="graph-summary-id">goal</span>
+                <span class="graph-summary-desc">{{ goalFact.description }}</span>
+              </div>
+            </div>
+            <!-- graph -->
+            <div class="graph-view"
+                 @mousedown.left="panStart"
+                 @mousemove="panMove"
+                 @mouseup="panEnd"
+                 @mouseleave="panEnd"
+                 @wheel.prevent="doZoom">
+              <svg class="graph-svg"
+                   :width="svgSize.w" :height="svgSize.h"
+                   xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <marker id="ah-done" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="rgba(65,211,154,0.6)"/>
+                  </marker>
+                  <marker id="ah-open" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="rgba(243,179,74,0.5)"/>
+                  </marker>
+                  <clipPath v-for="n in graphNodes" :key="'clip-'+n.id" :id="'clip-'+n.id">
+                    <rect :x="n.x - n.width/2" :y="n.y - n.height/2" :width="n.width" :height="n.height" rx="8" ry="8"/>
+                  </clipPath>
+                </defs>
+                <g :transform="`translate(${pan.x}, ${pan.y}) scale(${pan.scale})`">
+                  <!-- edges -->
+                  <path v-for="e in graphEdges" :key="e.id"
+                        :d="e.d" class="edge-path" :class="e.status"
+                        :marker-end="e.status === 'done' ? 'url(#ah-done)' : 'url(#ah-open)'"/>
+                  <!-- nodes -->
+                  <g v-for="n in graphNodes" :key="n.id">
+                    <!-- facts -->
+                    <rect v-if="n.kind === 'fact'"
+                          class="node-rect fact-rect"
+                          :class="[n.cls, selectedItemId === n.id && selectedItemType === 'fact' ? 'selected' : '']"
+                          :style="{'--node-color': n.color}"
+                          :x="n.x - n.width/2" :y="n.y - n.height/2"
+                          :width="n.width" :height="n.height"
+                          @click.stop="openFact(n.id)"/>
+                    <g v-if="n.kind === 'fact'" :clip-path="'url(#clip-'+n.id+')'">
+                      <text class="fact-text-id" :class="n.cls"
+                            :x="n.x - n.width/2 + 14" :y="n.y - n.height/2 + 18"
+                            @click.stop="openFact(n.id)" style="cursor:pointer">{{ n.label }}</text>
+                      <rect v-if="n.severity"
+                            class="fact-badge-bg"
+                            :stroke="n.color"
+                            :x="n.x - n.width/2 + 14 + n.label.length * 9 + 6"
+                            :y="n.y - n.height/2 + 6"
+                            :width="n.severity.length * 7.5 + 10" height="14"/>
+                      <text v-if="n.severity"
+                            class="fact-badge-text"
+                            :fill="n.color"
+                            :x="n.x - n.width/2 + 14 + n.label.length * 9 + 11"
+                            :y="n.y - n.height/2 + 16">{{ n.severity }}</text>
+                      <rect v-if="n.vulnType"
+                            class="fact-badge-bg"
+                            stroke="var(--border-color)"
+                            :x="computeBadgeEnd(n, 'severity')"
+                            :y="n.y - n.height/2 + 6"
+                            :width="n.vulnType.length * 6 + 10" height="14"/>
+                      <text v-if="n.vulnType"
+                            class="fact-badge-text"
+                            fill="var(--text-muted)"
+                            :x="computeBadgeEnd(n, 'severity') + 5"
+                            :y="n.y - n.height/2 + 16">{{ n.vulnType }}</text>
+                      <text v-if="n.kind === 'fact' && n.desc && n.id !== 'origin' && n.id !== 'goal'"
+                            class="fact-text-desc"
+                            :x="n.x - n.width/2 + 14" :y="n.y - n.height/2 + 36">{{ truncate(n.desc, 55) }}</text>
+                    </g>
+                    <!-- intents -->
+                    <g v-if="n.kind === 'intent'">
+                      <rect class="node-rect intent-rect"
+                            :class="n.status === 'done' ? 'done' : ''"
+                            :x="n.x - n.width/2" :y="n.y - n.height/2"
+                            :width="n.width" :height="n.height"
+                            @click.stop="openIntent(n.id)"/>
+                      <g :clip-path="'url(#clip-'+n.id+')'">
+                        <text class="intent-text-id" :class="n.status"
+                              :x="n.x - n.width/2 + 10" :y="n.y - n.height/2 + 12"
+                              @click.stop="openIntent(n.id)" style="cursor:pointer">{{ n.label }}</text>
+                        <text class="intent-text-desc"
+                              :x="n.x - n.width/2 + 10" :y="n.y - n.height/2 + 24">{{ truncate(n.desc, 55) }}</text>
+                      </g>
+                    </g>
+                  </g>
+                </g>
+              </svg>
+            </div>
+            <!-- attack paths + hints below graph -->
+             <div v-if="proj.project || proj.attack_paths?.length || proj.hints?.length || auxiliaryFacts.length"
+                  class="graph-bottom-panel"
+                  :style="{height: attackPanelHeight + 'px'}">
+              <div class="graph-bottom-resize"
+                   title="拖动调整攻击路径区域高度"
+                   @mousedown.stop.prevent="attackPanelResizeStart"></div>
+              <div class="graph-bottom-layout">
+                <div>
+                  <div v-if="proj.attack_paths?.length" class="sec">
+                    <h2>已完成的因果攻击路径 ({{ proj.attack_paths.length }})</h2>
+                    <div class="ap-status-reason">
+                      只从已结束的 Fact–Intent 图反向派生；已验证 Fact 经完成 Intent 连到 goal 后才显示。
+                    </div>
+                    <div v-for="ap in proj.attack_paths" :key="ap.id" class="ap-card">
+                      <div class="ap-header">
+                        <span class="ap-name">{{ ap.id }} — {{ ap.name }}</span>
+                        <span class="log-badge" :class="'type-' + (ap.status || 'hypothesis')">{{ ap.status || 'hypothesis' }}</span>
+                        <span class="severity-tag" :style="{color:sevColor(ap.severity), borderColor:sevColor(ap.severity), border:'1px solid '+sevColor(ap.severity)}">{{ ap.severity }}</span>
+                      </div>
+                      <div class="ap-desc">{{ ap.description }}</div>
+                      <div v-if="ap.status_reason" class="ap-status-reason">{{ ap.status_reason }}</div>
+                      <div v-if="ap.intent_refs?.length" class="ap-status-reason">
+                        因果 Intent：{{ ap.intent_refs.join(' → ') }}
+                      </div>
+                      <div class="ap-chain">
+                        <template v-for="(step, idx) in (ap.steps || [])" :key="step.fact_id">
+                          <span class="link-tag" :title="step.reason" @click="openFact(step.fact_id)">{{ step.fact_id }}</span>
+                          <span class="ap-step-state">{{ step.required ? step.derived_status : 'context' }}</span>
+                          <span v-if="idx < (ap.steps || []).length - 1" class="ap-arrow">→</span>
+                        </template>
+                      </div>
+                      <div v-if="ap.task_log_refs?.length" class="ap-chain">
+                        <span>执行日志:</span>
+                        <span v-for="logId in ap.task_log_refs" :key="logId"
+                              class="link-tag" @click="loadLogDetail(logId)">{{ logId }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="empty-state">暂无攻击路径</div>
+                </div>
+                <div v-if="proj.hints?.length || auxiliaryFacts.length" class="graph-aux-panel">
+                  <div v-if="proj.hints?.length" class="sec">
+                    <h2>提示</h2>
+                    <div v-for="h in proj.hints" :key="h.id" class="hint-card">
+                      <div class="hi-head"><span class="hi-id">{{ h.id }}</span><span class="hi-by">by {{ h.creator }}</span></div>
+                      <div class="hi-content">{{ h.content }}</div>
+                    </div>
+                  </div>
+                  <div v-if="auxiliaryFacts.length" class="sec">
+                    <h2>辅助事实 ({{ auxiliaryFacts.length }})</h2>
+                    <div class="aux-list">
+                      <button v-for="af in auxiliaryFacts" :key="af.id"
+                              class="aux-chip"
+                              :class="{selected: selectedItemId === af.id && selectedItemType === 'fact'}"
+                              @click="openFact(af.id)">
+                        <span class="aux-id" :style="{color:sevColor(af.severity)}">{{ af.id }}</span>
+                        <span class="aux-kind">{{ af.goal_type === 'potential_target' ? '候选目标' : '未连接' }}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- === FACTS TAB === -->
+          <div v-show="currentTab === 'facts'" class="content-scroll">
+            <div class="filter-bar">
+              <input v-model="filterText" placeholder="搜索事实..." @input="applyFilters"/>
+              <span class="flt-label">严重度:</span>
+              <button class="filter-btn" :class="{active: filterSev === 'all'}" @click="filterSev = 'all'; applyFilters()">全部</button>
+              <button v-for="s in sevList" :key="s"
+                      class="filter-btn" :class="{active: filterSev === s}"
+                      @click="filterSev = s; applyFilters()">{{ s }}</button>
+              <span class="flt-label">类型:</span>
+              <button class="filter-btn" :class="{active: filterType === 'all'}" @click="filterType = 'all'; applyFilters()">全部</button>
+              <button v-for="t in allTypes" :key="t"
+                      class="filter-btn" :class="{active: filterType === t}"
+                      @click="filterType = t; applyFilters()">{{ t }}</button>
+              <span class="flt-label">范围:</span>
+              <button v-for="surface in surfaceFilters" :key="surface"
+                      class="filter-btn" :class="{active: filterSurface === surface}"
+                      @click="filterSurface = surface; applyFilters()">{{ surfaceClassLabel(surface) }}</button>
+              <span class="flt-label">结论:</span>
+              <button v-for="result in resultFilters" :key="result"
+                      class="filter-btn" :class="{active: filterResult === result}"
+                      @click="filterResult = result; applyFilters()">{{ resultClassLabel(result) }}</button>
+            </div>
+            <div class="filter-results" v-if="filteredFacts.length !== allFacts.length">显示 {{ filteredFacts.length }}/{{ allFacts.length }} 事实</div>
+            <div v-for="(items, type) in groupedFilteredFacts" :key="type" class="fact-group">
+              <div class="group-toggle" @click="collapsed[type] = !collapsed[type]">
+                <span class="chevron" :class="{open: !collapsed[type]}">▸</span>
+                <span class="gt-name">{{ type }}</span>
+                <span class="gt-count">{{ items.length }}</span>
+              </div>
+              <div class="group-body" v-show="!collapsed[type]">
+                <div v-for="f in items" :key="f.id"
+                     class="fact-card" :class="{selected: selectedItemId === f.id && selectedItemType === 'fact'}"
+                     :style="{borderLeftColor: sevColor(f.severity)}"
+                     @click="openFact(f.id)">
+                  <div class="fc-row">
+                    <span class="fc-id" :style="{color: sevColor(f.severity)}">{{ f.id }}</span>
+                    <span class="badge" v-if="f.severity" :style="{color:sevColor(f.severity),borderColor:sevColor(f.severity)}">{{ f.severity }}</span>
+                    <span class="badge" :class="'surface-' + (f.surface_class || 'unclassified')">{{ surfaceClassLabel(f.surface_class) }}</span>
+                    <span class="badge" :class="'result-' + (f.result_class || 'informational')">{{ resultClassLabel(f.result_class) }}</span>
+                    <span class="badge" v-if="f.scope">{{ f.scope }}</span>
+                  </div>
+                  <div class="fc-desc">{{ f.description }}</div>
+                  <div class="fc-meta">
+                    <span v-if="f.parent_fact">← {{ f.parent_fact }}</span>
+                    <span v-if="factChildren(f.id).length">→ {{ factChildren(f.id).map(c => c.id).join(', ') }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div v-if="!Object.keys(groupedFilteredFacts).length" class="empty-state">没有匹配的事实</div>
+          </div>
+
+          <!-- === INTENTS TAB === -->
+          <div v-show="currentTab === 'intents'" class="content-scroll">
+            <div v-if="!proj.intents?.length" class="empty-state">暂无意图</div>
+            <div v-for="i in reversedIntents" :key="i.id"
+                 class="intent-card" :class="[i.to ? 'done' : '', selectedItemId === i.id && selectedItemType === 'intent' ? 'selected' : '']"
+                 @click="openIntent(i.id)">
+              <div class="ic-head">
+                <span class="ic-id">{{ i.id }}</span>
+                <span class="ic-arrow">{{ (i.from || []).join(', ') }} → {{ i.to || '?' }}</span>
+                <span class="ic-status" :class="i.to ? 'concluded' : 'open'">{{ i.to ? '已完成' : '进行中' }}</span>
+              </div>
+              <div class="ic-desc">{{ i.description }}</div>
+              <div class="ic-meta">
+                <span>by {{ i.creator }}</span>
+                <span v-if="i.worker">worker: {{ i.worker }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- === TIMELINE TAB === -->
+          <div v-show="currentTab === 'timeline'" class="content-scroll">
+            <div class="tl">
+              <div v-for="(f, idx) in sortedTimelineFacts" :key="f.id"
+                   class="tl-item" @click="openFact(f.id)">
+                <div class="tl-gutter">
+                  <div class="tl-dot" :style="{background: f.id === 'origin' ? 'var(--color-origin)' : f.id === 'goal' ? 'var(--color-goal)' : sevColor(f.severity)}"></div>
+                  <div v-if="idx < sortedTimelineFacts.length - 1" class="tl-line"></div>
+                </div>
+                <div class="tl-card" :class="{selected: selectedItemId === f.id && selectedItemType === 'fact'}">
+                  <div class="tl-head">
+                    <span class="tl-id" :style="{color: sevColor(f.severity)}">{{ f.id }}</span>
+                    <span class="badge" v-if="f.id !== 'origin' && f.id !== 'goal' && f.severity" :style="{color:sevColor(f.severity),borderColor:sevColor(f.severity)}">{{ f.severity }}</span>
+                    <span class="badge" v-if="f.id !== 'origin' && f.id !== 'goal' && f.vuln_type">{{ f.vuln_type }}</span>
+                  </div>
+                  <div class="tl-desc">{{ truncate(f.description, 150) }}</div>
+                  <div class="tl-time">{{ f.id === 'origin' ? '起点' : f.id === 'goal' ? '目标' : '#' + (parseInt(f.id.replace('f','')) || 0) }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- === COMPLETION BLOCKERS TAB === -->
+          <div v-show="currentTab === 'blockers'" class="content-scroll">
+            <div class="blocker-summary">
+              <span class="badge" :class="'status-' + statusClass(proj.project?.run_state || proj.project?.status)">
+                {{ statusLabel(proj.project?.run_state || proj.project?.status) }}
+              </span>
+              <span>{{ proj.project?.completion_blockers?.length || 0 }} 个未解决阻塞项</span>
+              <span v-if="proj.project?.last_progress_at" class="blocker-summary-time">
+                最近进展 {{ proj.project.last_progress_at }}
+              </span>
+              <div v-if="proj.project?.status === 'active'" class="blocker-summary-actions">
+                <button class="blocker-action" @click="continueBlockedProject">继续处理</button>
+                <button class="blocker-action danger" @click="stopProject">停止项目</button>
+              </div>
+            </div>
+            <div v-if="!proj.project?.completion_blockers?.length" class="empty-state">当前没有完成阻塞项</div>
+            <section v-for="group in blockerGroups" :key="group.id" class="blocker-group">
+              <h2 class="blocker-group-title">{{ group.label }} <span class="count">({{ group.items.length }})</span></h2>
+              <article v-for="blocker in group.items" :key="blocker.kind + ':' + blocker.ref"
+                       class="blocker-card" :class="'kind-' + blocker.kind">
+                <div class="blocker-head">
+                  <span class="blocker-ref" @click="openBlockerRef(blocker.ref)">{{ blocker.ref }}</span>
+                  <span class="badge">{{ blocker.status }}</span>
+                  <span v-if="blocker.priority != null" class="blocker-priority">priority {{ blocker.priority }}</span>
+                  <button v-if="blocker.kind === 'coverage' && proj.project?.status === 'active'"
+                          class="blocker-action exclude" @click="excludeCoverage(blocker)">
+                    不属于测试范围
+                  </button>
+                </div>
+                <div v-if="blocker.description" class="blocker-desc">{{ blocker.description }}</div>
+                <div class="blocker-reason">{{ blocker.reason }}</div>
+                <div v-if="blocker.kind === 'coverage' && blockerCoverage(blocker)" class="blocker-variants">
+                  <span>{{ blockerCoverage(blocker).surface_group || '-' }}</span>
+                  <span>{{ blockerCoverage(blocker).test_family || '-' }}</span>
+                  <span v-for="variant in blockerCoverage(blocker).test_variants || []"
+                        :key="variant" class="blocker-variant">
+                    {{ variant }}: {{ coverageVariantStatus(blockerCoverage(blocker), variant) }}
+                  </span>
+                </div>
+                <div class="blocker-meta">
+                  <span v-if="blocker.suggested_action">建议：{{ blockerActionLabel(blocker.suggested_action) }}</span>
+                  <span v-if="blocker.evidence_ref">证据：{{ blocker.evidence_ref }}</span>
+                  <span v-if="blocker.updated_at">更新：{{ blocker.updated_at }}</span>
+                  <span v-for="refId in blocker.related_refs || []" :key="refId"
+                        class="blocker-ref-link" @click="openBlockerRef(refId)">{{ refId }}</span>
+                </div>
+                <div v-if="blocker.task_log_refs?.length" class="blocker-meta">
+                  <span>执行日志:</span>
+                  <span v-for="logId in blocker.task_log_refs" :key="logId"
+                        class="blocker-ref-link" @click="loadLogDetail(logId)">{{ logId }}</span>
+                </div>
+              </article>
+            </section>
+          </div>
+
+          <!-- === LOGS TAB === -->
+          <div v-show="currentTab === 'logs'" class="content-scroll">
+            <div class="log-filters">
+              <select v-model="logFilter.taskType" @change="loadTaskLogs">
+                <option value="all">全部任务类型</option>
+                <option value="bootstrap">bootstrap</option>
+                <option value="explore">explore</option>
+                <option value="reason">reason</option>
+              </select>
+              <select v-model="logFilter.intentId" @change="loadTaskLogs">
+                <option value="all">全部 intent</option>
+                <option v-for="i in proj?.intents || []" :key="i.id" :value="i.id">{{ i.id }}</option>
+              </select>
+            </div>
+            <div class="log-list">
+              <div v-if="!taskLogs.length" class="log-empty">暂无执行日志</div>
+              <div v-for="log in taskLogs" :key="log.id" class="log-item" @click="loadLogDetail(log.id)">
+                <div class="log-head">
+                  <span class="log-id">{{ log.id }}</span>
+                  <span class="log-badge" :class="'type-' + log.task_type">{{ log.task_type }}</span>
+                  <span v-if="log.intent_id" class="log-intent-ref" @click.stop="openIntent(log.intent_id)">{{ log.intent_id }}</span>
+                  <span class="log-worker">{{ log.worker_name }}</span>
+                  <span class="log-phase">{{ log.phase }}</span>
+                </div>
+                <div class="log-meta">
+                  <span :class="log.return_code === 0 ? 'log-status-ok' : 'log-status-fail'">
+                    {{ log.return_code === 0 ? '✓ 成功' : '✗ 失败' }}
+                  </span>
+                  <span v-if="log.timed_out" class="log-status-timeout">⏱ 超时</span>
+                  <span class="log-duration">{{ log.duration_ms ? (log.duration_ms / 1000).toFixed(1) + 's' : '-' }}</span>
+                  <span class="log-time">{{ log.created_at }}</span>
+                </div>
+                <div class="log-preview">{{ log.stdin_preview || log.stdout_preview || '(无输入/输出)' }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- bottom bar for project actions -->
+        <div v-if="proj.project" class="bottom-bar">
+          <template v-if="proj.project?.status === 'active'">
+            <button @click="addHint">+ 添加提示</button>
+            <button @click="switchMode" :title="proj.project?.bootstrap_enabled ? '切换到真实网站模式' : '切换到CTF模式'">
+              {{ proj.project?.bootstrap_enabled ? '切换为真实网站模式' : '切换为CTF模式' }}
+            </button>
+            <button @click="stopProject">停止项目</button>
+          </template>
+          <button @click="downloadReport">导出报告</button>
+        </div>
+      </template>
+    </main>
+
+    <!-- ---- detail panel ---- -->
+    <aside class="detail-panel" v-show="selectedItemId" :style="{width: panelWidth + 'px'}">
+      <div class="resize-handle" :class="{resizing: isResizing}" @mousedown="resizeStart"></div>
+      <div class="detail-inner" v-if="selectedItemId">
+        <!-- fact detail -->
+        <template v-if="selectedItemType === 'fact' && detailFact">
+          <div class="detail-header">
+            <h2 :style="{color: sevColor(detailFact.severity)}">{{ detailFact.id }}</h2>
+            <button class="close-btn" @click="closeDetail">×</button>
+          </div>
+          <div class="info-group">
+            <h4>基本信息</h4>
+            <div class="info-row"><span class="info-label">ID:</span><span class="info-value">{{ detailFact.id }}</span></div>
+            <div class="info-row"><span class="info-label">类型:</span><span class="info-value">{{ detailFact.vuln_type || 'N/A' }}</span></div>
+            <div class="info-row"><span class="info-label">严重度:</span><span class="info-value" :style="{color: sevColor(detailFact.severity)}">{{ detailFact.severity || 'N/A' }}</span></div>
+            <div class="info-row"><span class="info-label">范围:</span><span class="info-value">{{ detailFact.scope || 'N/A' }}</span></div>
+            <div class="info-row"><span class="info-label">归属:</span><span class="info-value">{{ surfaceClassLabel(detailFact.surface_class) }}</span></div>
+            <div class="info-row"><span class="info-label">结论:</span><span class="info-value">{{ resultClassLabel(detailFact.result_class) }}</span></div>
+            <div class="info-row"><span class="info-label">状态:</span><span class="info-value">{{ detailFact.status || 'N/A' }}</span></div>
+            <div v-if="detailFact.verification_of" class="info-row"><span class="info-label">复核:</span><span class="info-value"><span class="link-tag" @click="openFact(detailFact.verification_of)">{{ detailFact.verification_of }}</span></span></div>
+          </div>
+          <div class="info-group">
+            <h4>描述</h4>
+            <div class="desc-box">{{ detailFact.description }}</div>
+          </div>
+          <div class="info-group">
+            <h4>关联</h4>
+            <div class="info-row">
+              <span class="info-label">Coverage:</span>
+              <span class="info-value">{{ detailFact.coverage_refs?.length ? detailFact.coverage_refs.join(', ') : '无' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">关联意图:</span>
+              <span class="info-value">
+                <template v-if="detailFact.intent_refs?.length">
+                  <span v-for="intentId in detailFact.intent_refs" :key="intentId"
+                        class="link-tag" @click="openIntent(intentId)">{{ intentId }}</span>
+                </template>
+                <span v-else style="color:var(--text-muted)">无</span>
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">执行日志:</span>
+              <span class="info-value">
+                <template v-if="detailFact.task_log_refs?.length">
+                  <span v-for="logId in detailFact.task_log_refs" :key="logId"
+                        class="link-tag" @click="loadLogDetail(logId)">{{ logId }}</span>
+                </template>
+                <span v-else style="color:var(--text-muted)">无</span>
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">父节点:</span>
+              <span class="info-value">
+                <span v-if="detailFact.parent_fact" class="link-tag" @click="openFact(detailFact.parent_fact)">{{ detailFact.parent_fact }}</span>
+                <span v-else style="color:var(--text-muted)">{{ detailFact.id === 'origin' || detailFact.id === 'goal' ? '—' : '无' }}</span>
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">子节点:</span>
+              <span class="info-value">
+                <template v-if="factChildren(detailFact.id).length">
+                  <span v-for="(c, i) in factChildren(detailFact.id)" :key="c.id">
+                    <span class="link-tag" @click="openFact(c.id)">{{ c.id }}</span><span v-if="i < factChildren(detailFact.id).length - 1">, </span>
+                  </span>
+                </template>
+                <span v-else style="color:var(--text-muted)">无</span>
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">来源意图:</span>
+              <span class="info-value">
+                <template v-if="intentsToFact(detailFact.id).length">
+                  <span v-for="(i, idx) in intentsToFact(detailFact.id)" :key="i.id">
+                    <span class="link-tag" @click="openIntent(i.id)">{{ i.id }}</span><span v-if="idx < intentsToFact(detailFact.id).length - 1">, </span>
+                  </span>
+                </template>
+                <span v-else style="color:var(--text-muted)">无</span>
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">目标意图:</span>
+              <span class="info-value">
+                <template v-if="intentsFromFact(detailFact.id).length">
+                  <span v-for="(i, idx) in intentsFromFact(detailFact.id)" :key="i.id">
+                    <span class="link-tag" @click="openIntent(i.id)">{{ i.id }}</span><span v-if="idx < intentsFromFact(detailFact.id).length - 1">, </span>
+                  </span>
+                </template>
+                <span v-else style="color:var(--text-muted)">无</span>
+              </span>
+            </div>
+          </div>
+          <div class="detail-actions">
+            <button @click="copyText(detailFact.id)">复制 ID</button>
+            <button @click="copyText(detailFact.description)">复制描述</button>
+          </div>
+        </template>
+
+        <!-- intent detail -->
+        <template v-if="selectedItemType === 'intent' && detailIntent">
+          <div class="detail-header">
+            <h2 style="color:var(--border-focus)">{{ detailIntent.id }}</h2>
+            <button class="close-btn" @click="closeDetail">×</button>
+          </div>
+          <div class="info-group">
+            <h4>基本信息</h4>
+            <div class="info-row"><span class="info-label">状态:</span><span class="info-value" :style="{color: detailIntent.to ? '#10b981' : '#f3b34a'}">{{ detailIntent.to ? '已完成' : '进行中' }}</span></div>
+            <div class="info-row"><span class="info-label">创建者:</span><span class="info-value">{{ detailIntent.creator }}</span></div>
+            <div class="info-row"><span class="info-label">Worker:</span><span class="info-value">{{ detailIntent.worker || 'N/A' }}</span></div>
+            <div class="info-row"><span class="info-label">创建时间:</span><span class="info-value">{{ detailIntent.created_at || 'N/A' }}</span></div>
+            <div class="info-row" v-if="detailIntent.concluded_at"><span class="info-label">完成时间:</span><span class="info-value">{{ detailIntent.concluded_at }}</span></div>
+          </div>
+          <div class="info-group">
+            <h4>描述</h4>
+            <div class="desc-box">{{ detailIntent.description }}</div>
+          </div>
+          <div class="info-group">
+            <h4>关联</h4>
+            <div class="info-row">
+              <span class="info-label">来源:</span>
+              <span class="info-value">
+                <span v-for="(s, idx) in (detailIntent.from || [])" :key="s">
+                  <span class="link-tag" @click="openFact(s)">{{ s }}</span><span v-if="idx < (detailIntent.from || []).length - 1">, </span>
+                </span>
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">目标:</span>
+              <span class="info-value">
+                <template v-if="detailIntent.to && factMap[detailIntent.to]">
+                  <span class="link-tag" @click="openFact(detailIntent.to)">{{ detailIntent.to }}</span>
+                  <span style="color:var(--text-muted);font-size:11px"> ({{ truncate(factMap[detailIntent.to].description, 50) }})</span>
+                </template>
+                <span v-else style="color:var(--text-muted)">?</span>
+              </span>
+            </div>
+          </div>
+        </template>
+      </div>
+    </aside>
+  </div>
+
+  <!-- log detail modal -->
+  <div v-if="selectedLog" class="log-modal-overlay" @click.self="closeLogDetail">
+    <div class="log-modal">
+      <div class="log-modal-header">
+        <h3>执行日志 {{ selectedLog.id }}</h3>
+        <button class="close-btn" @click="closeLogDetail">×</button>
+      </div>
+      <div class="log-modal-meta">
+        <div><strong>任务:</strong> {{ selectedLog.task_type }}</div>
+        <div v-if="selectedLog.intent_id"><strong>Intent:</strong> <span class="log-intent-ref" @click="openIntent(selectedLog.intent_id); closeLogDetail()">{{ selectedLog.intent_id }}</span></div>
+        <div><strong>Worker:</strong> {{ selectedLog.worker_name }}</div>
+        <div><strong>阶段:</strong> {{ selectedLog.phase }}</div>
+        <div><strong>耗时:</strong> {{ selectedLog.duration_ms ? (selectedLog.duration_ms / 1000).toFixed(1) + 's' : '-' }}</div>
+        <div><strong>状态:</strong> <span :class="selectedLog.return_code === 0 ? 'log-status-ok' : 'log-status-fail'">{{ selectedLog.return_code === 0 ? '✓ 成功' : '✗ 失败 (code=' + selectedLog.return_code + ')' }}</span></div>
+        <div v-if="selectedLog.timed_out"><strong>超时:</strong> <span class="log-status-timeout">是</span></div>
+        <div><strong>时间:</strong> {{ selectedLog.created_at }}</div>
+      </div>
+      <div class="log-modal-body">
+        <div class="log-modal-section">
+          <h4>operation input</h4>
+          <pre class="log-output">{{ selectedLog.stdin || '(空)' }}</pre>
+        </div>
+        <div class="log-modal-section">
+          <h4>stdout</h4>
+          <pre class="log-output">{{ selectedLog.stdout || '(空)' }}</pre>
+        </div>
+        <div class="log-modal-section">
+          <h4>stderr</h4>
+          <pre class="log-output">{{ selectedLog.stderr || '(空)' }}</pre>
+        </div>
+      </div>
+      <div class="log-modal-actions">
+        <button @click="copyText(selectedLog.stdin)">复制 input</button>
+        <button @click="copyText(selectedLog.stdout)">复制 stdout</button>
+        <button @click="copyText(selectedLog.stderr)">复制 stderr</button>
+        <button @click="closeLogDetail">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, computed, watch, onMounted, onUnmounted, nextTick } = Vue;
+
+createApp({
+  setup() {
+    // ---- state ----
+    const projects = ref([]);
+    const selectedProjId = ref(null);
+    const proj = ref(null);
+    const showNew = ref(false);
+    const newTitle = ref("");
+    const newOrigin = ref("");
+    const newGoal = ref("");
+    const newMode = ref("ctf");
+    const newAllowedTargets = ref("");
+    const newBlockedTargets = ref("");
+    const newAllowedPorts = ref("");
+    const newBlockedPorts = ref("");
+    const newAllowedPaths = ref("");
+    const newBlockedPaths = ref("");
+    const newSupportPorts = ref("");
+    const newAllowSubdomains = ref(true);
+    const newAllowDomainScan = ref(true);
+    const newPassiveOnly = ref(false);
+    const newTargetType = ref("domain");
+    const newReconPortScan = ref(true);
+    const newReconSubdomain = ref(true);
+    const newReconDirectory = ref(true);
+    const newReconAsset = ref(true);
+    const clock = ref("");
+    const currentTab = ref("graph");
+    const selectedItemId = ref(null);
+    const selectedItemType = ref("fact");
+    const factMap = ref({});
+    const filterText = ref("");
+    const filterSev = ref("all");
+    const filterType = ref("all");
+    const filterSurface = ref("all");
+    const filterResult = ref("all");
+    const collapsed = ref({});
+
+    // logs state
+    const taskLogs = ref([]);
+    const selectedLog = ref(null);
+    const logFilter = ref({ taskType: "all", intentId: "all" });
+
+    // graph state
+    const graphNodes = ref([]);
+    const graphEdges = ref([]);
+    const svgSize = ref({ w: 100, h: 100 });
+    const pan = ref({ x: 60, y: 60, scale: 1 });
+    const graphBounds = ref({ w: 100, h: 100 });
+    let isPanning = false, panSX = 0, panSY = 0;
+    let graphDagreNodes = {}; // for edge point lookup
+
+    // detail panel resize
+    const panelWidth = ref(420);
+    const isResizing = ref(false);
+    let resizeSX = 0, resizeSW = 0;
+
+    // attack path panel resize
+    const attackPanelHeight = ref(180);
+    const isAttackPanelResizing = ref(false);
+    let attackResizeSY = 0, attackResizeSH = 0;
+
+    // ---- clock ----
+    setInterval(() => { clock.value = new Date().toLocaleTimeString(); }, 1000);
+    clock.value = new Date().toLocaleTimeString();
+
+    // ---- constants ----
+    const sevList = ["critical", "high", "medium", "low", "info"];
+    const surfaceFilters = ["all", "web", "api", "support_service", "unclassified"];
+    const resultFilters = ["all", "confirmed", "limited", "refuted", "informational"];
+    const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4, null: 5 };
+    const sevColorMap = {
+      critical: "#ff4d4f", high: "#ffa940", medium: "#2f54eb", low: "#73d13d", info: "#13c2c2"
+    };
+
+    watch(newTargetType, (targetType) => {
+      if (targetType === "ip" || targetType === "api") {
+        newReconPortScan.value = true;
+        newReconSubdomain.value = false;
+        newReconDirectory.value = true;
+        newReconAsset.value = true;
+      } else if (targetType === "android") {
+        newReconPortScan.value = false;
+        newReconSubdomain.value = false;
+        newReconDirectory.value = false;
+        newReconAsset.value = false;
+      } else {
+        newReconPortScan.value = true;
+        newReconSubdomain.value = true;
+        newReconDirectory.value = true;
+        newReconAsset.value = true;
+      }
+    });
+
+    function sevColor(sev) { return sevColorMap[(sev || "").toLowerCase()] || "var(--text-muted)"; }
+
+    function surfaceClassLabel(value) {
+      return ({
+        all: "全部", web: "Web", api: "API", support_service: "支撑服务", unclassified: "未分类"
+      })[value || "unclassified"] || value;
+    }
+
+    function resultClassLabel(value) {
+      return ({
+        all: "全部", confirmed: "已确认", limited: "受限/未定论",
+        refuted: "已反驳", informational: "信息"
+      })[value || "informational"] || value;
+    }
+
+    function sevSort(a, b) { return (SEV_ORDER[a.severity] ?? 5) - (SEV_ORDER[b.severity] ?? 5); }
+
+    const statusLabels = {
+      active: "运行中", running: "运行中", waiting_retry: "等待重试",
+      completion_blocked: "完成受阻", stalled: "已停滞",
+      stopped: "已停止", completed: "已完成", failed: "已失败"
+    };
+    function statusLabel(s) { return statusLabels[(s || "").toLowerCase()] || s; }
+    function statusClass(s) { return (s || "").toLowerCase(); }
+
+    function truncate(s, len) { return (s && s.length > len) ? s.substring(0, len) + "…" : (s || ""); }
+
+    function parseTextList(value) {
+      return (value || "")
+        .split(/[\s,;\uFF0C\u3001\uFF1B]+/)
+        .map(v => v.trim())
+        .filter(Boolean);
+    }
+
+    function parsePortList(value) {
+      const ports = [];
+      for (const item of parseTextList(value)) {
+        if (/^\d+\-\d+$/.test(item)) {
+          const [start, end] = item.split("-").map(Number);
+          if (start > end) throw new Error(`端口范围无效: ${item}`);
+          for (let port = start; port <= end; port++) addPort(ports, port);
+        } else {
+          addPort(ports, Number(item));
+        }
+      }
+      return ports;
+    }
+
+    function addPort(ports, port) {
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Error("端口必须在 1-65535 之间");
+      }
+      if (!ports.includes(port)) ports.push(port);
+    }
+
+    function buildReconProfile() {
+      if (newTargetType.value === "android") {
+        return {
+          target_type: "android",
+          required_categories: ["android_app", "android_ui", "mobile_api"],
+          optional_categories: ["android_storage"],
+          disabled_categories: ["port_scan", "subdomain", "directory", "asset"]
+        };
+      }
+
+      const required = [];
+      const disabled = [];
+      const activeAllowed = !newPassiveOnly.value;
+      const addCategory = (enabled, category) => {
+        if (enabled) required.push(category);
+        else disabled.push(category);
+      };
+      const domainDiscoveryAllowed = ['domain', 'mixed'].includes(newTargetType.value)
+        && newAllowDomainScan.value && newAllowSubdomains.value;
+      addCategory(activeAllowed && newReconPortScan.value, "port_scan");
+      addCategory(activeAllowed && domainDiscoveryAllowed && newReconSubdomain.value, "subdomain");
+      addCategory(activeAllowed && newReconDirectory.value, "directory");
+      addCategory(activeAllowed && newReconAsset.value, "asset");
+      return {
+        target_type: newTargetType.value,
+        required_categories: required,
+        optional_categories: [],
+        disabled_categories: disabled
+      };
+    }
+
+    function resetNewProjectForm() {
+      newTitle.value = "";
+      newOrigin.value = "";
+      newGoal.value = "";
+      newMode.value = "ctf";
+      newAllowedTargets.value = "";
+      newBlockedTargets.value = "";
+      newAllowedPorts.value = "";
+      newBlockedPorts.value = "";
+      newAllowedPaths.value = "";
+      newBlockedPaths.value = "";
+      newSupportPorts.value = "";
+      newAllowSubdomains.value = true;
+      newAllowDomainScan.value = true;
+      newPassiveOnly.value = false;
+      newTargetType.value = "domain";
+      newReconPortScan.value = true;
+      newReconSubdomain.value = true;
+      newReconDirectory.value = true;
+      newReconAsset.value = true;
+    }
+
+    const tabs = computed(() => {
+      const d = proj.value;
+      return [
+        { id: "graph", label: "拓扑图", count: null },
+        { id: "facts", label: "事实", count: d ? d.facts.filter(f => f.id !== "origin" && f.id !== "goal").length : 0 },
+        { id: "intents", label: "意图", count: d ? d.intents.length : 0 },
+        { id: "timeline", label: "时间线", count: null },
+        { id: "blockers", label: "阻塞项", count: d ? (d.project?.completion_blockers?.length || 0) : 0 },
+        { id: "logs", label: "执行日志", count: null }
+      ];
+    });
+
+    // ---- API ----
+    async function api(path, opts = {}) {
+      const r = await fetch(path, opts);
+      if (!r.ok) {
+        const t = await r.text();
+        throw new Error(t);
+      }
+      const ct = r.headers.get("content-type") || "";
+      return ct.includes("application/json") ? r.json() : r.text();
+    }
+
+    // ---- data loading ----
+    async function loadProjects() {
+      try {
+        const list = await api("/projects");
+        projects.value = list || [];
+      } catch (e) {
+        projects.value = [];
+      }
+    }
+
+    async function selectProject(id) {
+      const previousId = selectedProjId.value;
+      const previousProject = proj.value;
+      selectedProjId.value = id;
+      showNew.value = false;
+      currentTab.value = "graph";
+      selectedItemId.value = null;
+      selectedItemType.value = "fact";
+      collapsed.value = {};
+      filterText.value = "";
+      filterSev.value = "all";
+      filterType.value = "all";
+      filterSurface.value = "all";
+      filterResult.value = "all";
+      try {
+        const dispatchView = await api(`/projects/${id}?view=dispatch`);
+        if (selectedProjId.value !== id) return;
+        proj.value = dispatchView;
+        factMap.value = {};
+        if (dispatchView.facts) dispatchView.facts.forEach(f => { factMap.value[f.id] = f; });
+        await nextTick();
+        computeGraph();
+        await loadTaskLogs();
+
+        // Full evidence and blockers are hydrated after the light planning view is visible.
+        try {
+          const fullView = await api(`/projects/${id}?view=full`);
+          if (selectedProjId.value !== id) return;
+          proj.value = fullView;
+          factMap.value = {};
+          if (fullView.facts) fullView.facts.forEach(f => { factMap.value[f.id] = f; });
+          await nextTick();
+          computeGraph();
+        } catch (detailError) {
+          // Keep the usable light view when the large detail request is temporarily unavailable.
+        }
+      } catch (e) {
+        selectedProjId.value = previousId;
+        proj.value = previousProject;
+      }
+    }
+
+    async function openBlockers(id) {
+      await selectProject(id);
+      if (selectedProjId.value === id && proj.value) currentTab.value = "blockers";
+    }
+
+    async function refresh() {
+      if (selectedProjId.value) {
+        await selectProject(selectedProjId.value);
+      } else {
+        await loadProjects();
+      }
+    }
+
+    async function loadTaskLogs() {
+      if (!selectedProjId.value) return;
+      try {
+        const params = new URLSearchParams();
+        if (logFilter.value.taskType !== "all") params.set("task_type", logFilter.value.taskType);
+        if (logFilter.value.intentId !== "all") params.set("intent_id", logFilter.value.intentId);
+        params.set("limit", "100");
+        taskLogs.value = await api(`/projects/${selectedProjId.value}/logs?${params}`);
+      } catch (e) {
+        taskLogs.value = [];
+      }
+    }
+
+    async function loadLogDetail(logId) {
+      if (!selectedProjId.value) return;
+      try {
+        selectedLog.value = await api(`/projects/${selectedProjId.value}/logs/${logId}`);
+      } catch (e) {
+        selectedLog.value = null;
+      }
+    }
+
+    function closeLogDetail() {
+      selectedLog.value = null;
+    }
+
+    async function createProject() {
+      try {
+        const isCtf = newMode.value === "ctf";
+        const body = {
+          title: newTitle.value || "untitled",
+          origin: newOrigin.value || "unknown",
+          goal: newGoal.value || "unknown",
+          mode: isCtf ? "ctf" : "real_website",
+          bootstrap_enabled: isCtf
+        };
+        if (!isCtf) {
+          body.scope_policy = {
+            allowed_targets: parseTextList(newAllowedTargets.value),
+            blocked_targets: parseTextList(newBlockedTargets.value),
+            allowed_ports: parsePortList(newAllowedPorts.value),
+            blocked_ports: parsePortList(newBlockedPorts.value),
+            allowed_paths: parseTextList(newAllowedPaths.value),
+            blocked_paths: parseTextList(newBlockedPaths.value),
+            support_ports: parsePortList(newSupportPorts.value),
+            allow_subdomains: newAllowSubdomains.value,
+            allow_domain_scan: newAllowDomainScan.value,
+            rate_limits: {},
+            passive_only: newPassiveOnly.value
+          };
+          body.recon_profile = buildReconProfile();
+        }
+        const d = await api("/projects", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        selectedProjId.value = d.project.id;
+        showNew.value = false;
+        resetNewProjectForm();
+        await refresh();
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    }
+
+    async function addHint() {
+      const content = prompt("输入提示内容:");
+      if (!content) return;
+      await api(`/projects/${selectedProjId.value}/hints`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content, creator: "human" })
+      });
+      await refresh();
+    }
+
+    async function continueBlockedProject() {
+      try {
+        await api("/projects/" + selectedProjId.value + "/blockers/continue", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            note: "Continue the highest-priority completion blocker with one precise alternate method.",
+            creator: "human"
+          })
+        });
+        await refresh();
+        currentTab.value = "blockers";
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    }
+
+    async function excludeCoverage(blocker) {
+      const coverageId = String(blocker.ref || "").split("/", 1)[0];
+      const reason = prompt("请输入不属于本次测试范围的原因:");
+      if (!coverageId || !reason?.trim()) return;
+      try {
+        await api("/projects/" + selectedProjId.value + "/coverage/" + coverageId + "/exclude", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ reason: reason.trim(), creator: "human" })
+        });
+        await refresh();
+        currentTab.value = "blockers";
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    }
+
+    async function stopProject() {
+      if (!confirm("确认停止项目？未解决项会保留在报告中。")) return;
+      try {
+        const updated = await api(`/projects/${selectedProjId.value}/status`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status: "stopped" })
+        });
+        if (proj.value?.project) {
+          proj.value.project = { ...proj.value.project, ...updated };
+        }
+        projects.value = projects.value.map(project =>
+          project.id === updated.id ? { ...project, ...updated } : project
+        );
+        await loadProjects();
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    }
+
+    async function switchMode() {
+      const currentMode = proj.value?.project?.bootstrap_enabled ? "ctf" : "real_website";
+      const targetMode = currentMode === "ctf" ? "real_website" : "ctf";
+      const confirmMsg = targetMode === "real_website"
+        ? "切换到真实网站模式将启用RECON门控，智能体将先进行信息收集。确认切换？"
+        : "切换到CTF模式将禁用RECON门控，智能体将自由探索。确认切换？";
+      if (!confirm(confirmMsg)) return;
+      await api(`/projects/${selectedProjId.value}/mode`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: targetMode })
+      });
+      await refresh();
+    }
+
+    function downloadReport() {
+      if (!selectedProjId.value) return;
+      window.open(`/projects/${selectedProjId.value}/export?format=report`, "_blank");
+    }
+
+    // ---- tab switching ----
+    function switchTab(t) {
+      currentTab.value = t;
+      if (filterText.value) filterText.value = "";
+      filterSev.value = "all";
+      filterType.value = "all";
+      filterSurface.value = "all";
+      filterResult.value = "all";
+      if (t === "logs") loadTaskLogs();
+    }
+
+    // ---- fact/index helpers ----
+    const allFacts = computed(() => {
+      return (proj.value?.facts || []).filter(f => f.id !== "origin" && f.id !== "goal").sort(sevSort);
+    });
+
+    const allTypes = computed(() => {
+      const s = new Set();
+      (proj.value?.facts || []).forEach(f => { if (f.id !== "origin" && f.id !== "goal") s.add(f.vuln_type || "未分类"); });
+      return [...s].sort();
+    });
+
+    const filteredFacts = computed(() => {
+      let arr = allFacts.value;
+      if (filterSev.value !== "all") arr = arr.filter(f => f.severity === filterSev.value);
+      if (filterType.value !== "all") arr = arr.filter(f => (f.vuln_type || "未分类") === filterType.value);
+      if (filterSurface.value !== "all") arr = arr.filter(f => (f.surface_class || "unclassified") === filterSurface.value);
+      if (filterResult.value !== "all") arr = arr.filter(f => (f.result_class || "informational") === filterResult.value);
+      if (filterText.value) {
+        const q = filterText.value.toLowerCase();
+        arr = arr.filter(f =>
+          f.id.toLowerCase().includes(q) || (f.description || "").toLowerCase().includes(q) ||
+          (f.vuln_type || "").toLowerCase().includes(q) || (f.scope || "").toLowerCase().includes(q));
+      }
+      return arr;
+    });
+
+    const groupedFilteredFacts = computed(() => {
+      const groups = {};
+      filteredFacts.value.forEach(f => {
+        const key = f.vuln_type || "未分类";
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(f);
+      });
+      for (const items of Object.values(groups)) items.sort(sevSort);
+      const sorted = {};
+      Object.keys(groups).sort().forEach(k => { sorted[k] = groups[k]; });
+      return sorted;
+    });
+
+    function applyFilters() {} // triggers computed re-eval
+
+    const reversedIntents = computed(() => {
+      return (proj.value?.intents || []).slice().reverse();
+    });
+
+    const blockerGroups = computed(() => {
+      const labels = {
+        coverage: "Coverage",
+        intent: "Intent / 重试",
+        fact: "高危验证",
+        reason: "系统停滞"
+      };
+      const order = ["coverage", "intent", "fact", "reason"];
+      const groups = {};
+      for (const blocker of (proj.value?.project?.completion_blockers || [])) {
+        if (!groups[blocker.kind]) groups[blocker.kind] = [];
+        groups[blocker.kind].push(blocker);
+      }
+      return order.filter(kind => groups[kind]?.length).map(kind => ({
+        id: kind,
+        label: labels[kind],
+        items: groups[kind].slice().sort((a, b) => (b.priority || 0) - (a.priority || 0))
+      }));
+    });
+
+    function blockerCoverage(blocker) {
+      const coverageId = String(blocker?.ref || "").split("/", 1)[0];
+      return (proj.value?.coverage_items || []).find(item => item.id === coverageId) || null;
+    }
+
+    function coverageVariantStatus(coverage, variant) {
+      const result = (coverage?.variant_results || []).find(item => item.variant === variant);
+      return result?.status || "untested";
+    }
+
+    function blockerActionLabel(action) {
+      const labels = {
+        wait_for_worker: "等待当前任务完成",
+        schedule_intent: "调度该意图",
+        wait_for_retry: "等待自动重试",
+        retry_or_replace_intent: "重试或换方法",
+        reconcile_or_schedule: "对账已有事实或创建测试意图",
+        verify_high_risk_fact: "执行高危二次验证",
+        inspect_reason_log_and_retry: "检查 Reason 日志并恢复调度"
+      };
+      return labels[action] || action;
+    }
+
+    function openBlockerRef(refId) {
+      if (factMap.value[refId]) {
+        openFact(refId);
+        return;
+      }
+      if ((proj.value?.intents || []).some(intent => intent.id === refId)) openIntent(refId);
+    }
+
+    const originFact = computed(() => factMap.value["origin"] || null);
+    const goalFact = computed(() => factMap.value["goal"] || null);
+
+    const subGoals = computed(() => {
+      return (proj.value?.facts || []).filter(f => f.goal_type === "potential_target");
+    });
+
+    const orphanFacts = computed(() => {
+      if (!proj.value?.facts) return [];
+      const reachable = new Set();
+      const intentBySource = {};
+      const ints = proj.value.intents || [];
+      for (const i of ints) {
+        for (const src of (i.from || [])) {
+          if (factMap.value[src] && i.to && factMap.value[i.to]) {
+            (intentBySource[src] = intentBySource[src] || []).push(i.to);
+          }
+        }
+      }
+      function mark(fid) {
+        if (reachable.has(fid)) return;
+        reachable.add(fid);
+        for (const t of (intentBySource[fid] || [])) mark(t);
+      }
+      mark("origin");
+      return proj.value.facts.filter(f => f.id !== "origin" && f.id !== "goal" && !reachable.has(f.id));
+    });
+
+    const auxiliaryFacts = computed(() => {
+      const seen = new Set();
+      const items = [];
+      for (const fact of [...subGoals.value, ...orphanFacts.value]) {
+        if (seen.has(fact.id)) continue;
+        seen.add(fact.id);
+        items.push(fact);
+      }
+      return items;
+    });
+
+    const sortedTimelineFacts = computed(() => {
+      return (proj.value?.facts || []).slice().sort((a, b) => {
+        const na = parseInt(a.id.replace("f", "")) || 0;
+        const nb = parseInt(b.id.replace("f", "")) || 0;
+        return na - nb;
+      });
+    });
+
+    function factChildren(fid) {
+      const children = [];
+      const fm = factMap.value;
+      const intents = proj.value?.intents || [];
+      // parent_fact children
+      for (const f of (proj.value?.facts || [])) {
+        if (f.parent_fact === fid && fm[f.id]) children.push(fm[f.id]);
+      }
+      // intent-derived children (to)
+      for (const i of intents) {
+        if (i.to && fm[i.to] && (i.from || []).includes(fid) && !children.find(c => c.id === i.to)) {
+          children.push(fm[i.to]);
+        }
+      }
+      return children;
+    }
+
+    function intentsToFact(fid) {
+      return (proj.value?.intents || []).filter(i => i.to === fid);
+    }
+
+    function intentsFromFact(fid) {
+      return (proj.value?.intents || []).filter(i => (i.from || []).includes(fid));
+    }
+
+    // ---- detail panel ----
+    const detailFact = computed(() => {
+      if (selectedItemType.value !== "fact" || !selectedItemId.value) return null;
+      return factMap.value[selectedItemId.value] || null;
+    });
+
+    const detailIntent = computed(() => {
+      if (selectedItemType.value !== "intent" || !selectedItemId.value) return null;
+      return (proj.value?.intents || []).find(i => i.id === selectedItemId.value) || null;
+    });
+
+    function openFact(fid) {
+      selectedItemId.value = fid;
+      selectedItemType.value = "fact";
+    }
+
+    function openIntent(iid) {
+      selectedItemId.value = iid;
+      selectedItemType.value = "intent";
+    }
+
+    function closeDetail() {
+      selectedItemId.value = null;
+    }
+
+    function copyText(s) {
+      navigator.clipboard.writeText(s || "");
+    }
+
+    // ---- panel resize ----
+    function resizeStart(e) {
+      isResizing.value = true;
+      resizeSX = e.clientX;
+      resizeSW = panelWidth.value;
+      document.body.style.cursor = "col-resize";
+      document.addEventListener("mousemove", resizeMove);
+      document.addEventListener("mouseup", resizeEnd);
+    }
+    function resizeMove(e) {
+      if (!isResizing.value) return;
+      panelWidth.value = Math.max(320, Math.min(resizeSW + resizeSX - e.clientX, window.innerWidth - 350));
+    }
+    function resizeEnd() {
+      isResizing.value = false;
+      document.body.style.cursor = "";
+      document.removeEventListener("mousemove", resizeMove);
+      document.removeEventListener("mouseup", resizeEnd);
+    }
+
+    function attackPanelResizeStart(e) {
+      isAttackPanelResizing.value = true;
+      attackResizeSY = e.clientY;
+      attackResizeSH = attackPanelHeight.value;
+      document.body.style.cursor = "row-resize";
+      document.addEventListener("mousemove", attackPanelResizeMove);
+      document.addEventListener("mouseup", attackPanelResizeEnd);
+    }
+
+    function attackPanelResizeMove(e) {
+      if (!isAttackPanelResizing.value) return;
+      const container = document.querySelector('.tab-body');
+      const maxHeight = Math.max(140, Math.floor((container?.clientHeight || window.innerHeight) * 0.55));
+      attackPanelHeight.value = Math.max(96, Math.min(maxHeight, attackResizeSH + attackResizeSY - e.clientY));
+      requestAnimationFrame(fitGraphToViewport);
+    }
+
+    function attackPanelResizeEnd() {
+      isAttackPanelResizing.value = false;
+      document.body.style.cursor = "";
+      document.removeEventListener("mousemove", attackPanelResizeMove);
+      document.removeEventListener("mouseup", attackPanelResizeEnd);
+      requestAnimationFrame(fitGraphToViewport);
+    }
+
+    // ---- graph layout ----
+    const NODE_W = 300, NODE_H_BASE = 50, NODE_H_DESC = 68;
+    const RANK_SEP = 60, NODE_SEP = 30, MARGIN = 36;
+
+    function computeGraph() {
+      const d = proj.value;
+      if (!d || !d.facts?.length) {
+        graphNodes.value = [];
+        graphEdges.value = [];
+        graphBounds.value = { w: 100, h: 100 };
+        return;
+      }
+
+      const fm = factMap.value;
+      const allIntents = d.intents || [];
+
+      // build intent adjacency
+      const intentBySource = {}; // source fact -> [{intent, target}]
+      for (const i of allIntents) {
+        if (!i.to || !fm[i.to]) continue;
+        for (const src of (i.from || [])) {
+          if (fm[src]) {
+            (intentBySource[src] = intentBySource[src] || []).push({ intent: i, target: i.to });
+          }
+        }
+      }
+
+      // compute reachable from origin
+      const reachable = new Set();
+      function markReachable(fid) {
+        if (reachable.has(fid)) return;
+        reachable.add(fid);
+        for (const e of (intentBySource[fid] || [])) markReachable(e.target);
+      }
+      markReachable("origin");
+
+      // build effective fact-to-fact edges for transitive reduction
+      const ffEdges = [];
+      for (const [src, entries] of Object.entries(intentBySource)) {
+        if (!reachable.has(src)) continue;
+        const byTarget = {};
+        for (const e of entries) {
+          if (!reachable.has(e.target)) continue;
+          if (!byTarget[e.target]) byTarget[e.target] = [];
+          byTarget[e.target].push(e.intent);
+        }
+        for (const [tgt, ints] of Object.entries(byTarget)) {
+          ffEdges.push({ source: src, target: tgt, intents: ints });
+        }
+      }
+
+      // transitive reduction on fact-to-fact edges
+      const factAdj = {};
+      for (const e of ffEdges) {
+        (factAdj[e.source] = factAdj[e.source] || []).push(e.target);
+      }
+
+      const keptFfEdges = ffEdges.filter(e => {
+        const temp = factAdj[e.source];
+        factAdj[e.source] = temp.filter(t => t !== e.target);
+        const visited = new Set([e.source]);
+        const queue = [e.source];
+        while (queue.length) {
+          const cur = queue.shift();
+          for (const next of (factAdj[cur] || [])) {
+            if (next === e.target) { factAdj[e.source] = temp; return false; }
+            if (!visited.has(next)) { visited.add(next); queue.push(next); }
+          }
+        }
+        factAdj[e.source] = temp;
+        return true;
+      });
+
+      // collect kept intents
+      const keptIntents = new Set();
+      for (const e of keptFfEdges) {
+        for (const i of e.intents) keptIntents.add(i.id);
+      }
+
+      const graphIntents = allIntents.filter(i => keptIntents.has(i.id) && reachable.has(i.to) && reachable.has(i.from[0]));
+      const graphFacts = d.facts.filter(f => reachable.has(f.id));
+
+      // build dagre
+      const g = new dagre.graphlib.Graph();
+      g.setGraph({ rankdir: "TB", ranksep: RANK_SEP, nodesep: NODE_SEP, marginx: MARGIN, marginy: MARGIN, acyclicer: "greedy" });
+      g.setDefaultEdgeLabel(() => ({}));
+
+      for (const f of graphFacts) {
+        const hasDesc = f.id !== "origin" && f.id !== "goal" && f.description;
+        const h = hasDesc ? NODE_H_DESC : NODE_H_BASE;
+        g.setNode(f.id, { label: f.id, width: NODE_W, height: h, fact: f });
+      }
+      for (const i of graphIntents) {
+        const label = i.id + " " + (i.description || "").slice(0, 60);
+        const w = Math.min(340, Math.max(120, label.length * 7 + 36));
+        g.setNode(i.id, { label: i.id, width: w, height: 30, intent: i });
+        g.setEdge(i.from[0], i.id, {});
+        g.setEdge(i.id, i.to, {});
+      }
+
+      dagre.layout(g);
+
+      // store dagre nodes for edge point lookup
+      graphDagreNodes = {};
+      g.nodes().forEach(nid => { const n = g.node(nid); if (n) graphDagreNodes[nid] = n; });
+
+      // compute SVG size
+      let sw = 0, sh = 0;
+      g.nodes().forEach(nid => {
+        const n = g.node(nid);
+        if (n) { sw = Math.max(sw, n.x + n.width / 2 + MARGIN); sh = Math.max(sh, n.y + n.height / 2 + MARGIN); }
+      });
+      graphBounds.value = { w: Math.max(1, sw + 10), h: Math.max(1, sh + 10) };
+      fitGraphToViewport();
+
+      // build graph nodes for Vue
+      const nodes = [];
+      for (const nid of g.nodes()) {
+        const n = g.node(nid);
+        if (!n) continue;
+        if (n.fact) {
+          const f = n.fact;
+          const isOrigin = f.id === "origin";
+          const isGoal = f.id === "goal";
+          const hasDesc = !isOrigin && !isGoal && f.description;
+          nodes.push({
+            id: f.id, kind: "fact",
+            x: n.x, y: n.y, width: n.width, height: n.height,
+            label: f.id, color: sevColor(f.severity),
+            cls: isOrigin ? "origin" : isGoal ? "goal" : "",
+            desc: hasDesc ? f.description : "",
+            severity: f.severity,
+            vulnType: f.vuln_type || ""
+          });
+        } else if (n.intent) {
+          const i = n.intent;
+          nodes.push({
+            id: i.id, kind: "intent",
+            x: n.x, y: n.y, width: n.width, height: n.height,
+            label: i.id,
+            desc: (i.description || "").substring(0, 50),
+            status: i.to ? "done" : "open"
+          });
+        }
+      }
+      graphNodes.value = nodes;
+
+      // build edges
+      const edges = [];
+      for (const i of graphIntents) {
+        const fNode = graphDagreNodes[i.from[0]];
+        const iNode = graphDagreNodes[i.id];
+        const tNode = graphDagreNodes[i.to];
+        if (!fNode || !iNode || !tNode) continue;
+        const done = i.to != null;
+        const cls = done ? "done" : "open";
+        // route through intent node
+        const fy = fNode.y + fNode.height / 2;
+        const ty = tNode.y - tNode.height / 2;
+        const midY = (fy + ty) / 2;
+        const path1 = `M${fNode.x},${fy} L${fNode.x},${midY - 14} L${iNode.x},${midY - 14} L${iNode.x},${iNode.y - iNode.height / 2}`;
+        const path2 = `M${iNode.x},${iNode.y + iNode.height / 2} L${iNode.x},${midY + 14} L${tNode.x},${midY + 14} L${tNode.x},${ty}`;
+        edges.push({ id: i.id + "_in", d: path1, status: cls });
+        edges.push({ id: i.id + "_out", d: path2, status: cls });
+      }
+      graphEdges.value = edges;
+
+      setTimeout(fitGraphToViewport, 50);
+    }
+
+    function fitGraphToViewport() {
+      const container = document.querySelector('.graph-view');
+      if (!container) return;
+      const cw = Math.max(1, container.clientWidth);
+      const ch = Math.max(1, container.clientHeight);
+      const bw = Math.max(1, graphBounds.value.w);
+      const bh = Math.max(1, graphBounds.value.h);
+      svgSize.value = { w: cw, h: ch };
+      const scale = Math.min(1.35, Math.max(0.15, (cw - 64) / bw), Math.max(0.15, (ch - 64) / bh));
+      pan.value = {
+        x: Math.max(16, (cw - bw * scale) / 2),
+        y: Math.max(16, (ch - bh * scale) / 2),
+        scale
+      };
+    }
+
+    // badge position helper for SVG
+    function computeBadgeEnd(n, after) {
+      let start = n.x - n.width / 2 + 14 + n.label.length * 9 + 6;
+      if (after === "severity" && n.severity) start += n.severity.length * 7.5 + 10 + 4;
+      return start;
+    }
+
+    // ---- graph pan/zoom ----
+    function panStart(e) {
+      if (e.button !== 0) return;
+      isPanning = true;
+      panSX = e.clientX - pan.value.x;
+      panSY = e.clientY - pan.value.y;
+    }
+    function panMove(e) {
+      if (!isPanning) return;
+      pan.value.x = e.clientX - panSX;
+      pan.value.y = e.clientY - panSY;
+    }
+    function panEnd() { isPanning = false; }
+
+    function doZoom(e) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      const newScale = Math.min(4, Math.max(0.15, pan.value.scale * factor));
+      pan.value.x = mx - (mx - pan.value.x) * (newScale / pan.value.scale);
+      pan.value.y = my - (my - pan.value.y) * (newScale / pan.value.scale);
+      pan.value.scale = newScale;
+    }
+
+    // ---- lifecycle ----
+    onMounted(() => {
+      loadProjects();
+      window.addEventListener("resize", fitGraphToViewport);
+    });
+    onUnmounted(() => {
+      window.removeEventListener("resize", fitGraphToViewport);
+      document.removeEventListener("mousemove", resizeMove);
+      document.removeEventListener("mouseup", resizeEnd);
+      document.removeEventListener("mousemove", attackPanelResizeMove);
+      document.removeEventListener("mouseup", attackPanelResizeEnd);
+    });
+
+    return {
+      projects, selectedProjId, proj, showNew, newTitle, newOrigin, newGoal, newMode,
+      newAllowedTargets, newBlockedTargets, newAllowedPorts, newBlockedPorts,
+      newAllowedPaths, newBlockedPaths, newSupportPorts, newAllowSubdomains, newAllowDomainScan, newPassiveOnly,
+      newTargetType, newReconPortScan, newReconSubdomain, newReconDirectory, newReconAsset,
+      clock,
+      currentTab, tabs, selectedItemId, selectedItemType, factMap,
+      filterText, filterSev, filterType, filterSurface, filterResult, collapsed,
+      surfaceFilters, resultFilters,
+      panelWidth, isResizing, pan, attackPanelHeight,
+      graphNodes, graphEdges, svgSize,
+      allFacts, allTypes, filteredFacts, groupedFilteredFacts,
+      reversedIntents, sortedTimelineFacts, originFact, goalFact, orphanFacts, subGoals, auxiliaryFacts,
+      blockerGroups,
+      detailFact, detailIntent,
+      taskLogs, selectedLog, logFilter,
+      loadProjects, selectProject, openBlockers, refresh, createProject, addHint, continueBlockedProject, excludeCoverage, stopProject, switchMode, downloadReport,
+      switchTab, applyFilters,
+      loadTaskLogs, loadLogDetail, closeLogDetail,
+      openFact, openIntent, closeDetail, copyText,
+      resizeStart, attackPanelResizeStart,
+      panStart, panMove, panEnd, doZoom,
+      sevColor, sevList, statusLabel, statusClass, truncate, blockerActionLabel, blockerCoverage, coverageVariantStatus, openBlockerRef,
+      surfaceClassLabel, resultClassLabel,
+      factChildren, intentsToFact, intentsFromFact,
+      computeBadgeEnd
+    };
+  }
+}).mount("#app");
+</script>
+</body>
+</html>

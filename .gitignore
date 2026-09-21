@@ -1,0 +1,50 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+
+# uv
+# (uv.lock IS committed)
+
+# Local runtime data + secrets
+datas/
+/skidc/work/
+dispatch.yaml
+dispatch.local.yaml
+dispatch.*.local.yaml
+*.db
+*.db-wal
+*.db-journal
+*.db-shm
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# pytest
+.pytest_cache/
+.pytest-*/
+.test-deps/
+
+# Claude Code
+CLAUDE.md
+.claude/
+
+# Local agent metadata and code indexes
+.agent/
+.agents/
+.codegraph/
+.codex/
+
+# Local implementation plans and remediation notes
+/plans/
+*_PLAN.md
+*_REMEDIATION.md

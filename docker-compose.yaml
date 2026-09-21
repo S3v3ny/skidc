@@ -1,0 +1,40 @@
+services:
+  skidc-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: skidc-app
+    pull_policy: never
+    container_name: skidc-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./datas/skidc/:/root/.local/share/skidc/
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/projects', timeout=5)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 3s
+    restart: unless-stopped
+    command: ["uv", "run", "skidc", "serve", "--host", "0.0.0.0", "--no-access-log"]
+
+  skidc-dispatcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: skidc-app
+    pull_policy: never
+    container_name: skidc-dispatcher
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./dispatch.yaml:/skidc/dispatch.yaml
+    depends_on:
+      skidc-server:
+        condition: service_healthy
+    restart: unless-stopped
+    command: ["uv", "run", "skidc", "dispatch", "--config", "dispatch.yaml"]

@@ -1,0 +1,54 @@
+# Android-capable dispatcher configuration.
+# This keeps the original Skidc blackboard/dispatcher design and adds an Android
+# control bridge exposed to workers through ANDROID_MCP_URL.
+#
+# Start the bridge separately before dispatching:
+#   cd skidc
+#   uv run skidc android-mcp --device-id emulator-5554 --host 127.0.0.1 --port 8765
+#
+# In Docker Compose, use a host-reachable URL for ANDROID_MCP_URL. On Docker Desktop:
+#   http://host.docker.internal:8765
+
+server: "http://127.0.0.1:8000"
+
+common_env:
+  ANDROID_MCP_URL: "http://127.0.0.1:8765"
+
+runtime:
+  interval: 3
+  max_workers: 4
+  max_running_projects: 2
+  max_project_workers: 2
+  healthcheck_timeout: 20
+  worker_healthcheck: "startup_only"
+  prompt_group: "android"
+  server_timeout: 15
+  dispatch_view_timeout: 15
+  project_detail_timeout: 60
+
+tasks:
+  bootstrap:
+    timeout: 300
+    conclude_timeout: 90
+  reason:
+    timeout: 240
+    max_intents: 2
+  explore:
+    timeout: 600
+    conclude_timeout: 120
+
+container:
+  image: "skidc-worker:latest"
+  network_mode: "host"
+  completed_action: "stop"
+
+workers:
+  - name: "android_codex_qwen"
+    type: "codex"
+    task_types: [bootstrap, reason, explore]
+    max_running: 1
+    priority: 0
+    env:
+      CODEX_MODEL: "qwen3.7-plus"
+      CODEX_BASE_URL: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      OPENAI_API_KEY: "<YOUR_OPENAI_API_KEY>"

@@ -1,0 +1,100 @@
+# Skidc dispatcher configuration.
+# Copy to dispatch.yaml and fill in your real model endpoints + API keys.
+#
+# The headline idea: a worker's `type` selects the agent CLI loop (claudecode / codex),
+# but the actual LLM behind it is whatever its env points at. So a "claudecode" worker
+# can run DeepSeek (via its Anthropic-compatible API) and a "codex" worker can run Qwen
+# (via DashScope's OpenAI-compatible API). Swap models by editing env — no code changes.
+
+server: "http://skidc-server:8000"
+
+# Shared environment merged into every worker (worker.env overrides these).
+common_env: {}
+
+runtime:
+  # Scheduler tick interval in seconds; also reused as the claim-task heartbeat period.
+  interval: 3
+  # Global cap on concurrently running tasks across all workers and projects.
+  max_workers: 8
+  # Max projects this dispatcher will actively schedule at once.
+  max_running_projects: 3
+  # Per-project task cap (bootstrap + reason + explore combined).
+  max_project_workers: 4
+  # Outer watchdog timeout (seconds) for each worker healthcheck.
+  healthcheck_timeout: 20
+  # "startup_and_task" checks at startup and before every task.
+  # "startup_only" checks only at startup. "disabled" skips automatic checks.
+  worker_healthcheck: "startup_only"
+  # Prompt set loaded from skidc/dispatcher/prompts/<group>/.
+  prompt_group: "default"
+  server_timeout: 15
+  dispatch_view_timeout: 15
+  project_detail_timeout: 60
+
+tasks:
+  bootstrap:
+    # Initial direct-solve attempt; returns fact+complete only if fully solved.
+    timeout: 300
+    # Budget for the conclude fallback that harvests a fact after a timeout.
+    conclude_timeout: 90
+  reason:
+    # Reads the graph: is the goal met? what new intents should be opened?
+    timeout: 300
+    # Hard cap on intents one reason step may create.
+    max_intents: 2
+  explore:
+    # Main execution timeout for exploring one claimed intent.
+    timeout: 600
+    # Budget for the conclude fallback that summarizes partial findings.
+    conclude_timeout: 120
+
+container:
+  # Worker container image. One container per project; the dispatcher execs agents inside.
+  image: "skidc-worker:latest"
+  network_mode: "host"
+  # "stop" keeps finished containers for inspection; "remove" is cleaner.
+  completed_action: "stop"
+  # Add Linux capabilities only when a task truly needs them (e.g. packet crafting).
+  # cap_add:
+  #   - "NET_RAW"
+  #   - "NET_ADMIN"
+
+workers:
+  # Priority is ascending: lower numbers are preferred first. max_running is per-worker
+  # concurrency. Split one model into multiple workers only when they use different API
+  # keys (independent rate-limit/quota units).
+
+  # ---- DeepSeek, driven through the Claude Code CLI loop ----
+  # Models: deepseek-v4-flash (fast) / deepseek-v4-pro (strong).
+  # (Old names deepseek-chat / deepseek-reasoner are deprecated after 2026-07-24.)
+  - name: "claudecode_deepseek"
+    type: "claudecode"
+    task_types: [bootstrap, reason, explore]
+    max_running: 2
+    priority: 0
+    env:
+      ANTHROPIC_MODEL: "deepseek-v4-flash"
+      ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic"
+      ANTHROPIC_AUTH_TOKEN: "<YOUR_ANTHROPIC_AUTH_TOKEN>"
+
+  # ---- Qwen, driven through the Codex CLI loop ----
+  - name: "codex_qwen"
+    type: "codex"
+    task_types: [bootstrap, reason, explore]
+    max_running: 2
+    priority: 1
+    env:
+      CODEX_MODEL: "qwen3.7-plus"
+      CODEX_BASE_URL: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      OPENAI_API_KEY: "<YOUR_OPENAI_API_KEY>"
+
+  # ---- A second DeepSeek worker on a different key = independent quota ----
+  - name: "claudecode_deepseek_pro"
+    type: "claudecode"
+    task_types: [reason]
+    max_running: 1
+    priority: 0
+    env:
+      ANTHROPIC_MODEL: "deepseek-v4-pro"
+      ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic"
+      ANTHROPIC_AUTH_TOKEN: "<YOUR_SECOND_ANTHROPIC_AUTH_TOKEN>"

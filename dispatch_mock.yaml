@@ -1,0 +1,45 @@
+# Mock dispatcher config: exercise the full scheduler with NO real models and NO Docker
+# pull. Every worker is a `mock` driver whose phase outcomes are random distributions,
+# so you can watch bootstrap/reason/explore, timeouts, conclude fallbacks, and container
+# lifecycle behavior locally. prompt_group "mock" feeds structured JSON to the mock driver.
+
+server: "http://127.0.0.1:8000"
+
+runtime:
+  interval: 3
+  max_workers: 5
+  max_running_projects: 3
+  max_project_workers: 2
+  healthcheck_timeout: 15
+  worker_healthcheck: "startup_only"
+  prompt_group: "mock"
+
+tasks:
+  bootstrap:
+    timeout: 120
+    conclude_timeout: 30
+  reason:
+    timeout: 45
+    max_intents: 2
+  explore:
+    timeout: 600
+    conclude_timeout: 120
+
+container:
+  image: "skidc-worker:latest"
+  network_mode: "host"
+  completed_action: "stop"
+
+workers:
+  - name: "mock-observer"
+    type: "mock"
+    task_types: [bootstrap, reason, explore]
+    max_running: 2
+    priority: 0
+    env:
+      MOCK_HEALTHCHECK: '{"delay":[0.05,0.15],"outcomes":{"ok":0.9,"fail":0.1}}'
+      MOCK_BOOTSTRAP: '{"delay":[0.1,12.0],"outcomes":{"complete":0.5,"fact":0.1,"rejected":0.1,"invalid_json":0.1,"invalid_payload":0.1,"command_fail":0.1}}'
+      MOCK_BOOTSTRAP_CONCLUDE: '{"delay":[0.1,2.2],"outcomes":{"fact":0.6,"rejected":0.1,"invalid_json":0.1,"invalid_payload":0.1,"command_fail":0.1}}'
+      MOCK_REASON: '{"delay":[0.1,2.2],"outcomes":{"complete":0.1,"intent":0.4,"noop":0.1,"rejected":0.1,"invalid_json":0.1,"invalid_payload":0.1,"command_fail":0.1}}'
+      MOCK_EXPLORE_EXECUTE: '{"delay":[0.1,12.0],"outcomes":{"fact":0.6,"rejected":0.1,"invalid_json":0.1,"invalid_payload":0.1,"command_fail":0.1}}'
+      MOCK_EXPLORE_CONCLUDE: '{"delay":[0.1,2.2],"outcomes":{"fact":0.6,"rejected":0.1,"invalid_json":0.1,"invalid_payload":0.1,"command_fail":0.1}}'
