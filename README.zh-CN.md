@@ -2,9 +2,9 @@
 
 **[🇨🇳 中文](README.zh-CN.md)** | **[🇬🇧 English](README.md)**
 
-# Skidc
+# Skidc — Multi-Agent Pentest Orchestrator
 
-### 多智能体自动化渗透测试平台
+### 面向 Web、API 与 Android 的多智能体渗透测试编排平台
 
 *定义**起点**和**目标**，Skidc 即编排大语言模型驱动的智能体，*
 *自主规划、执行并验证渗透测试工作流——覆盖 Web、API 与 Android 目标。*
