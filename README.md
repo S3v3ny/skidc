@@ -2,11 +2,11 @@
 
 **[🇨🇳 中文](README.zh-CN.md)** | **[🇬🇧 English](README.md)**
 
-# Skidc
+# PentestMesh
 
 ### Multi-Agent Automated Penetration Testing Platform
 
-*Define an **origin** and a **goal**. Skidc orchestrates LLM-powered agents*
+*Define an **origin** and a **goal**. PentestMesh orchestrates LLM-powered agents*
 *to autonomously plan, execute, and verify penetration testing workflows —*
 *across Web, API, and Android targets.*
 
@@ -14,14 +14,16 @@
 
 ---
 
-## What is Skidc?
+> **Naming note:** PentestMesh is the public project name. The internal Python package and CLI still use `skidc` temporarily for backward compatibility.
 
-Skidc is an automated penetration testing platform that uses multiple LLM-powered agents
+## What is PentestMesh?
+
+PentestMesh is an automated penetration testing platform that uses multiple LLM-powered agents
 to drive the full pentest lifecycle — from reconnaissance through exploitation — without
 manual step-by-step scripting.
 
 You describe **where you start** (a target IP, URL, APK, or domain) and **what success
-looks like** (get a shell, capture the flag, find an IDOR). Skidc's dispatcher breaks the
+looks like** (get a shell, capture the flag, find an IDOR). PentestMesh's dispatcher breaks the
 problem into parallel exploration tasks, runs them inside isolated Docker containers, and
 writes every confirmed finding back to a shared task graph that drives the next round of
 reasoning.
@@ -45,7 +47,7 @@ reasoning.
 
 ```
               ┌────────────────────────────────────┐
-              │           Skidc Server             │   truth source:
+              │           PentestMesh Server             │   truth source:
               │   Facts + Intents + Hints + Paths  │   graph consistency only
               └─────────────────┬──────────────────┘
                                 │  read / write protocol API
@@ -138,7 +140,7 @@ Swapping models is a config edit. Adding a new backend is one new driver file in
 
 ## Android MCP Bridge
 
-Skidc includes a built-in Android control bridge for mobile application security testing.
+PentestMesh includes a built-in Android control bridge for mobile application security testing.
 It is a lightweight FastAPI service that wraps ADB commands into HTTP endpoints, allowing
 pentest agents to interact with Android emulators or physical devices.
 
@@ -449,7 +451,7 @@ Replace `mirror.wane.kr` with `mirrors.aliyun.com` in `container/Dockerfile`.
 
 ## Responsible use
 
-Skidc targets authorized penetration-testing / CTF / security-assessment environments.
+PentestMesh targets authorized penetration-testing / CTF / security-assessment environments.
 Use it **only** where you have explicit permission to operate. Unauthorized security
 testing may be illegal and harmful. You are solely responsible for how you use this project.
 
