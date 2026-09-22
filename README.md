@@ -2,9 +2,9 @@
 
 **[🇨🇳 中文](README.zh-CN.md)** | **[🇬🇧 English](README.md)**
 
-# Skidc
+# Skidc — Multi-Agent Pentest Orchestrator
 
-### Multi-Agent Automated Penetration Testing Platform
+### Orchestrating autonomous security testing across Web, API, and Android
 
 *Define an **origin** and a **goal**. Skidc orchestrates LLM-powered agents*
 *to autonomously plan, execute, and verify penetration testing workflows —*
